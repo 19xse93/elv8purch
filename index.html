@@ -14,8 +14,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
-  deleteDoc,
-  query
+  deleteDoc
 } from 'firebase/firestore';
 import { 
   LayoutDashboard, 
@@ -155,7 +154,6 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // Paths follow Mandatory Rule 1
     const purchasesRef = collection(db, 'artifacts', appId, 'public', 'data', 'purchases');
     const apvsRef = collection(db, 'artifacts', appId, 'public', 'data', 'apvs');
     const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
@@ -342,7 +340,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 flex flex-col md:relative md:translate-x-0 transform transition-transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 text-white font-black text-xl flex items-center gap-2 border-b border-slate-800">
           <TrendingUp className="text-blue-500" /> ProcureDesk
@@ -367,7 +364,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative flex flex-col">
         <header className="bg-white border-b p-4 md:p-6 flex justify-between items-center sticky top-0 z-40 shadow-sm">
           <div className="flex items-center gap-4">
@@ -385,7 +381,6 @@ export default function App() {
         <div className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
           {activeTab === 'dashboard' && (
             <div className="space-y-6 animate-in">
-              {/* Treasury Card */}
               <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white flex flex-col md:flex-row justify-between items-center gap-8 shadow-2xl relative overflow-hidden">
                 <div className="relative z-10">
                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2"><Wallet size={14} className="text-blue-500"/> Treasury Fund Allocation</p>
@@ -403,7 +398,6 @@ export default function App() {
                 <Activity size={300} className="absolute -right-20 -bottom-20 opacity-5" />
               </div>
 
-              {/* Performance Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex items-center justify-between transition-all hover:shadow-md">
                   <div className="flex-1">
@@ -430,7 +424,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Aging Breakdown */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {Object.entries(metrics.agingSummary).map(([cat, val]: [string, any]) => (
                   <div key={cat} className="bg-white p-6 rounded-[1.5rem] border shadow-sm transition-all hover:translate-y-[-2px]">
@@ -546,7 +539,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Admin Login Modal */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-in">
@@ -560,7 +552,6 @@ export default function App() {
         </div>
       )}
 
-      {/* PO Modal (Add/Edit) */}
       {isPoModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
           <form onSubmit={handleSavePo} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in space-y-6 max-h-[90vh] overflow-y-auto">
@@ -603,7 +594,6 @@ export default function App() {
         </div>
       )}
 
-      {/* APV Modal (Add/Edit) */}
       {isApvModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
           <form onSubmit={handleSaveApv} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in space-y-6">
@@ -638,7 +628,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Treasury Fund Modal */}
       {isFundModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
           <form onSubmit={handleUpdateFund} className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-in space-y-6">
