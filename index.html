@@ -4,87 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProcureDesk | Project elev8-be0f4</title>
-    <!-- Core Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase SDKs (Compat Version for Browser) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/lucide-react@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; margin: 0; background-color: #0f172a; color: white; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; margin: 0; background-color: #f8fafc; color: #1e293b; overflow: hidden; }
         .animate-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 12px; display: inline-block; transition: all 0.3s ease; }
-        .dot-waiting { background: #475569; }
-        .dot-success { background: #22c55e; box-shadow: 0 0 12px #22c55e; }
-        .dot-error { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
-        .step-item { display: flex; align-items: center; margin-bottom: 16px; transition: color 0.3s ease; }
-        .step-text-waiting { color: #64748b; }
-        .step-text-active { color: #f8fafc; font-weight: 600; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body>
     <div id="root">
-        <!-- Static Diagnostic UI -->
-        <div style="max-width: 450px; width: 100%; padding: 40px; text-align: left;" id="diagnostic-ui">
-            <div style="margin-bottom: 40px;">
-                <div style="background: #3b82f6; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                </div>
-                <h1 style="font-size: 28px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.02em;">ProcureDesk</h1>
-                <p style="font-size: 14px; color: #94a3b8; font-weight: 500;">Environment Check: <span style="color: #3b82f6;">elev8-be0f4</span></p>
-            </div>
-            
-            <div style="background: #1e293b; padding: 24px; border-radius: 20px; border: 1px solid #334155; font-family: ui-monospace, monospace; font-size: 13px;">
-                <div class="step-item" id="step-1"><span class="status-dot dot-waiting"></span> [1] Initialize Firebase SDK</div>
-                <div class="step-item" id="step-2"><span class="status-dot dot-waiting"></span> [2] Authentication Session</div>
-                <div class="step-item" id="step-3"><span class="status-dot dot-waiting"></span> [3] Firestore Data Stream</div>
-                <div class="step-item" id="step-4"><span class="status-dot dot-waiting"></span> [4] Render Application</div>
-            </div>
-
-            <div id="error-box" style="display: none; margin-top: 24px; padding: 20px; background: #450a0a; border: 1px solid #991b1b; border-radius: 16px; color: #fecaca; font-size: 12px; line-height: 1.6;">
-                <div style="display: flex; align-items: center; margin-bottom: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #ef4444;">
-                    Sync Blocked
-                </div>
-                <span id="error-text"></span>
-                <button onclick="location.reload()" style="margin-top: 16px; background: #991b1b; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; display: block;">RETRY CONNECTION</button>
-            </div>
+        <div style="text-align: center; color: white; font-family: sans-serif;">
+            <div style="width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+            <p style="font-size: 14px; font-weight: 600; letter-spacing: 0.05em;">ESTABLISHING SYNC...</p>
         </div>
     </div>
+    <style> @keyframes spin { to { transform: rotate(360deg); } } </style>
 
     <script type="text/babel">
-        // Use 'var' for top-level declarations to avoid specific Babel standalone conflicts in global scope
         var useState = window.React.useState;
         var useEffect = window.React.useEffect;
         var useMemo = window.React.useMemo;
+        var Icons = window.LucideReact || {};
 
-        var updateStep = function(id, status) {
-            var el = document.getElementById('step-' + id);
-            if (el) {
-                var dot = el.querySelector('.status-dot');
-                if (dot) dot.className = 'status-dot dot-' + status;
-                el.className = 'step-item ' + (status === 'success' ? 'step-text-active' : 'step-text-waiting');
-            }
-        };
-
-        var showError = function(msg) {
-            var box = document.getElementById('error-box');
-            var text = document.getElementById('error-text');
-            if (box && text) {
-                box.style.display = 'block';
-                text.innerText = msg;
-            }
-        };
-
-        // Firebase Configuration
         var firebaseConfig = {
             apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
             authDomain: "elev8-be0f4.firebaseapp.com",
@@ -94,192 +47,276 @@
             appId: "1:939507136986:web:8a8d417cbbc80921eda8e3"
         };
 
-        // App State Constants
         var APP_ID = 'my-procurement-app';
-        var TODAY_DATE = '2026-03-24';
-
-        // Icons
-        var Icons = window.LucideReact || {};
-
-        // Seeding logic for empty database
-        var seedDatabase = async function() {
-            var db = window.firebase.firestore();
-            var baseRef = db.collection('artifacts').doc(APP_ID).collection('public').doc('data');
-            try {
-                await baseRef.collection('settings').doc('treasury').set({ amount: 5000000 });
-                await baseRef.collection('purchases').doc('PO-2026-001').set({ 
-                    id: 'PO-2026-001', vendor: 'TechCorp Solutions', amount: 150000, status: 'Pending', date: TODAY_DATE, description: 'Infrastructure Setup'
-                });
-            } catch (err) {
-                console.error("Seed failed:", err);
-            }
-        };
+        var TODAY = new Date('2026-03-24');
 
         function App() {
+            var [activeTab, setActiveTab] = useState('dashboard');
+            var [user, setUser] = useState(null);
             var [purchases, setPurchases] = useState([]);
             var [apvs, setApvs] = useState([]);
-            var [weeklyFund, setWeeklyFund] = useState(0);
-            var [isLoading, setIsLoading] = useState(true);
-            var [activeTab, setActiveTab] = useState('dashboard');
+            var [weeklyFund, setWeeklyFund] = useState(5000000);
             var [isAdmin, setIsAdmin] = useState(false);
+            var [isLoading, setIsLoading] = useState(true);
             var [showAdminLogin, setShowAdminLogin] = useState(false);
             var [adminPassword, setAdminPassword] = useState('');
 
-            useEffect(function() {
-                // Initialize Firebase
-                if (!window.firebase.apps.length) {
-                    try {
-                        window.firebase.initializeApp(firebaseConfig);
-                        updateStep(1, 'success');
-                    } catch (err) {
-                        updateStep(1, 'error');
-                        showError("Initialization Error: " + err.message);
-                        return;
-                    }
-                } else {
-                    updateStep(1, 'success');
-                }
+            // Modals & Form State
+            var [isPoModalOpen, setIsPoModalOpen] = useState(false);
+            var [isApvModalOpen, setIsApvModalOpen] = useState(false);
+            var [newPo, setNewPo] = useState({ id: '', vendor: '', amount: '', description: '', prReceivedDate: '', poDate: '', expectedDelivery: '' });
+            var [newApv, setNewApv] = useState({ id: '', poId: '', vendor: '', amount: '', invoiceDate: '', dueDate: '' });
 
+            useEffect(function() {
+                if (!window.firebase.apps.length) window.firebase.initializeApp(firebaseConfig);
                 var auth = window.firebase.auth();
                 var db = window.firebase.firestore();
 
-                var unsubAuth = auth.onAuthStateChanged(async function(user) {
-                    if (!user) {
-                        try {
-                            await auth.signInAnonymously();
-                            updateStep(2, 'success');
-                        } catch (e) {
-                            updateStep(2, 'error');
-                            showError("Auth Error: Anonymous sign-in is disabled. In Firebase Console, enable 'Anonymous' in Authentication > Sign-in method.");
-                        }
+                return auth.onAuthStateChanged(async function(u) {
+                    if (!u) {
+                        try { await auth.signInAnonymously(); } catch(e) { console.error("Auth failed"); }
                     } else {
-                        updateStep(2, 'success');
-                        startSync();
+                        setUser(u);
+                        var baseRef = db.collection('artifacts').doc(APP_ID).collection('public').doc('data');
+                        
+                        baseRef.collection('purchases').onSnapshot(snap => {
+                            setPurchases(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                        });
+
+                        baseRef.collection('apvs').onSnapshot(snap => {
+                            setApvs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                            setIsLoading(false);
+                        });
+
+                        baseRef.collection('settings').doc('treasury').onSnapshot(doc => {
+                            if (doc.exists) setWeeklyFund(doc.data().amount);
+                        });
+                    }
+                });
+            }, []);
+
+            var formatCurrency = (amt) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amt);
+
+            var getAgingCategory = (dueDate) => {
+                var due = new Date(dueDate);
+                var diffDays = Math.ceil((TODAY - due) / (1000 * 60 * 60 * 24));
+                if (diffDays <= 0) return 'Current';
+                if (diffDays <= 30) return '1-30 Days';
+                if (diffDays <= 60) return '31-60 Days';
+                return '60+ Days';
+            };
+
+            var metrics = useMemo(function() {
+                var aging = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '60+ Days': 0 };
+                var unpaidTotal = 0;
+                var fundedUnpaid = 0;
+
+                apvs.forEach(a => {
+                    if (a.status !== 'Paid') {
+                        var cat = getAgingCategory(a.dueDate);
+                        aging[cat] += Number(a.amount || 0);
+                        unpaidTotal += Number(a.amount || 0);
+                        if (a.funded) fundedUnpaid += Number(a.amount || 0);
                     }
                 });
 
-                function startSync() {
-                    var baseRef = db.collection('artifacts').doc(APP_ID).collection('public').doc('data');
-                    
-                    var unsubP = baseRef.collection('purchases').onSnapshot(function(snap) {
-                        updateStep(3, 'success');
-                        if (snap.empty) {
-                            seedDatabase();
-                        } else {
-                            setPurchases(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                        }
-                    }, function(err) {
-                        updateStep(3, 'error');
-                        showError("Database Error: Access Denied. Ensure Firestore Rules are in 'Test Mode' or allow read/write.");
-                    });
+                return { aging, unpaidTotal, fundedUnpaid };
+            }, [apvs]);
 
-                    var unsubA = baseRef.collection('apvs').onSnapshot(function(snap) {
-                        setApvs(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }));
-                        setIsLoading(false);
-                        updateStep(4, 'success');
-                    });
+            var handleAddPo = async (e) => {
+                e.preventDefault();
+                await window.firebase.firestore().collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('purchases').doc(newPo.id).set({
+                    ...newPo, amount: Number(newPo.amount), receivedDate: null, status: 'Pending'
+                });
+                setIsPoModalOpen(false);
+                setNewPo({ id: '', vendor: '', amount: '', description: '', prReceivedDate: '', poDate: '', expectedDelivery: '' });
+            };
 
-                    var unsubS = baseRef.collection('settings').doc('treasury').onSnapshot(function(doc) {
-                        if (doc.exists) setWeeklyFund(doc.data().amount);
-                    });
-                }
+            var handleAddApv = async (e) => {
+                e.preventDefault();
+                await window.firebase.firestore().collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('apvs').doc(newApv.id).set({
+                    ...newApv, amount: Number(newApv.amount), status: 'Unpaid', funded: false
+                });
+                setIsApvModalOpen(false);
+                setNewApv({ id: '', poId: '', vendor: '', amount: '', invoiceDate: '', dueDate: '' });
+            };
 
-                return function() { unsubAuth(); };
-            }, []);
+            var markReceived = async (po) => {
+                if (!isAdmin) return;
+                var date = prompt("Enter Received Date (YYYY-MM-DD)", TODAY.toISOString().split('T')[0]);
+                if (date) await window.firebase.firestore().collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('purchases').doc(po.id).update({ receivedDate: date, status: 'Received' });
+            };
 
-            var formatCurrency = function(amt) {
-                return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amt);
+            var toggleFunded = async (apv) => {
+                if (!isAdmin) return;
+                await window.firebase.firestore().collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('apvs').doc(apv.id).update({ funded: !apv.funded });
+            };
+
+            var deleteRecord = async (col, id) => {
+                if (!isAdmin || !confirm("Delete this record?")) return;
+                await window.firebase.firestore().collection('artifacts').doc(APP_ID).collection('public').doc('data').collection(col).doc(id).delete();
             };
 
             if (isLoading) return null;
 
-            var IconComp = function(props) {
-                var Icon = props.icon;
-                return Icon ? <Icon size={props.size} className={props.className} /> : null;
+            var Icon = (props) => {
+                var Comp = props.icon;
+                return Comp ? <Comp size={props.size || 20} className={props.className} /> : null;
             };
 
             return (
-                <div className="flex h-screen bg-slate-50 text-slate-900 animate-in overflow-hidden">
-                    <aside className="w-64 bg-slate-900 p-8 flex flex-col hidden md:flex">
-                        <div className="mb-10 text-white">
-                            <h1 className="font-black text-2xl flex items-center">
-                                <IconComp icon={Icons.TrendingUp} className="mr-3 text-blue-500" size={24} /> ProcureDesk
-                            </h1>
+                <div className="flex h-screen overflow-hidden text-slate-900 bg-slate-50">
+                    {/* Sidebar */}
+                    <aside className="w-64 bg-slate-900 p-8 flex flex-col hidden md:flex shrink-0">
+                        <div className="mb-10 flex items-center text-white font-black text-xl tracking-tight">
+                            <Icon icon={Icons.TrendingUp} className="mr-3 text-blue-500" /> ProcureDesk
                         </div>
-                        <nav className="space-y-2 flex-1 text-slate-400">
-                            <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left px-5 py-3 rounded-2xl transition-all font-semibold ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-xl shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}>Dashboard</button>
-                            <button onClick={() => setActiveTab('purchases')} className={`w-full text-left px-5 py-3 rounded-2xl transition-all font-semibold ${activeTab === 'purchases' ? 'bg-blue-600 text-white shadow-xl shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}>Purchases</button>
+                        <nav className="space-y-1 flex-1">
+                            {[
+                                { id: 'dashboard', label: 'Dashboard', icon: Icons.LayoutDashboard },
+                                { id: 'purchases', label: 'PO Monitoring', icon: Icons.ShoppingCart },
+                                { id: 'apvs', label: 'APV Aging', icon: Icons.Clock },
+                                { id: 'analysis', label: 'Data Analysis', icon: Icons.BarChart3 }
+                            ].map(t => (
+                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`w-full flex items-center px-5 py-3 rounded-2xl transition-all font-semibold ${activeTab === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                    <Icon icon={t.icon} className="mr-3" size={18} /> {t.label}
+                                </button>
+                            ))}
                         </nav>
                         <div className="mt-auto pt-6 border-t border-slate-800">
                             {!isAdmin ? (
                                 <button onClick={() => setShowAdminLogin(true)} className="w-full py-3 bg-blue-600/10 text-blue-400 border border-blue-900/50 rounded-xl text-[10px] font-bold uppercase tracking-widest">Admin Unlock</button>
                             ) : (
-                                <div className="flex items-center text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
-                                    <IconComp icon={Icons.ShieldCheck} size={14} className="mr-2"/> System Active
-                                </div>
+                                <button onClick={() => setIsAdmin(false)} className="w-full py-3 bg-emerald-600/10 text-emerald-400 border border-emerald-900/50 rounded-xl text-[10px] font-bold uppercase">Super User active</button>
                             )}
                         </div>
                     </aside>
 
-                    <main className="flex-1 p-8 md:p-12 overflow-y-auto w-full">
-                        <header className="flex justify-between items-center mb-10">
+                    {/* Main Area */}
+                    <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
+                        <header className="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4">
                             <div>
-                                <h2 className="text-3xl font-black text-slate-900 capitalize tracking-tight">{activeTab}</h2>
-                                <p className="text-slate-400 text-sm font-medium mt-1">Live Sync • elev8-be0f4</p>
+                                <h2 className="text-3xl font-black tracking-tight capitalize">{activeTab.replace('-',' ')}</h2>
+                                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">System Date: {TODAY.toDateString()}</p>
                             </div>
-                            <div className="flex items-center space-x-2 text-xs font-bold bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100">
-                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse mr-2"></div>
-                                <span className="text-slate-500 uppercase tracking-tighter">Connected</span>
-                            </div>
+                            {isAdmin && (
+                                <div className="flex gap-2">
+                                    <button onClick={() => setIsPoModalOpen(true)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">+ NEW PURCHASE</button>
+                                    <button onClick={() => setIsApvModalOpen(true)} className="px-5 py-2.5 bg-slate-800 text-white rounded-xl text-xs font-bold shadow-lg shadow-slate-200 hover:bg-slate-900 transition-all">+ NEW APV</button>
+                                </div>
+                            )}
                         </header>
 
-                        {activeTab === 'dashboard' ? (
-                            <div className="space-y-8 max-w-5xl">
-                                <div className="bg-slate-900 rounded-[3rem] p-10 md:p-12 text-white relative overflow-hidden shadow-2xl">
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-6 animate-in">
+                                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
                                     <div className="relative z-10">
-                                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3 flex items-center">
-                                            <IconComp icon={Icons.Wallet} size={16} className="mr-2 text-blue-500" /> Weekly Liquidity
+                                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center">
+                                            <Icon icon={Icons.Wallet} size={14} className="mr-2 text-blue-500" /> Weekly Fund Status
                                         </p>
-                                        <h3 className="text-5xl md:text-6xl font-black tracking-tight">{formatCurrency(weeklyFund)}</h3>
+                                        <h3 className="text-5xl font-black tracking-tighter">{formatCurrency(weeklyFund - metrics.fundedUnpaid)}</h3>
+                                        <div className="mt-8 flex flex-wrap gap-3">
+                                            <div className="px-4 py-2 bg-white/5 rounded-full border border-white/10 text-[10px] font-bold uppercase">Weekly Cap: {formatCurrency(weeklyFund)}</div>
+                                            <div className="px-4 py-2 bg-amber-500/10 rounded-full border border-amber-500/20 text-[10px] font-bold uppercase text-amber-400">Earmarked: {formatCurrency(metrics.fundedUnpaid)}</div>
+                                            <div className="px-4 py-2 bg-rose-500/10 rounded-full border border-rose-500/20 text-[10px] font-bold uppercase text-rose-400">Total Delinquent: {formatCurrency(metrics.unpaidTotal - metrics.aging['Current'])}</div>
+                                        </div>
                                     </div>
-                                    <div className="absolute top-0 right-0 p-12 opacity-5"><IconComp icon={Icons.TrendingUp} size={280} /></div>
+                                    <div className="absolute top-0 right-0 p-12 opacity-5"><Icon icon={Icons.TrendingUp} size={300} /></div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex items-center">
-                                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl mr-6"><IconComp icon={Icons.ShoppingCart} size={28}/></div>
-                                        <div>
-                                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">PO Records</p>
-                                            <h4 className="text-2xl font-black text-slate-900">{purchases.length}</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    {Object.entries(metrics.aging).map(([cat, val]) => (
+                                        <div key={cat} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                            <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1">{cat} Aging</p>
+                                            <h4 className={`text-xl font-black ${val > 0 && cat !== 'Current' ? 'text-rose-600' : 'text-slate-800'}`}>{formatCurrency(val)}</h4>
                                         </div>
-                                    </div>
-                                    <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex items-center">
-                                        <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl mr-6"><IconComp icon={Icons.Activity} size={28}/></div>
-                                        <div>
-                                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Health</p>
-                                            <h4 className="text-2xl font-black text-slate-900">Optimal</h4>
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
                             </div>
-                        ) : (
-                            <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm max-w-5xl">
+                        )}
+
+                        {activeTab === 'purchases' && (
+                            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden animate-in">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 border-b border-slate-100">
                                             <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                <th className="px-8 py-6">PO ID</th>
-                                                <th className="px-8 py-6">Vendor</th>
-                                                <th className="px-8 py-6 text-right">Amount</th>
+                                                <th className="px-6 py-5">PO / PR Tracking</th>
+                                                <th className="px-6 py-5">Vendor & Description</th>
+                                                <th className="px-6 py-5">Delivery Status</th>
+                                                <th className="px-6 py-5 text-right">Amount</th>
+                                                {isAdmin && <th className="px-6 py-5"></th>}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
-                                            {purchases.map(function(p, i) {
+                                            {purchases.map(p => (
+                                                <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="px-6 py-5">
+                                                        <div className="font-bold text-blue-600 text-sm">{p.id}</div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mt-1">PR: {p.prReceivedDate || 'N/A'} → PO: {p.poDate || 'N/A'}</div>
+                                                    </td>
+                                                    <td className="px-6 py-5">
+                                                        <div className="font-bold text-slate-700 text-sm">{p.vendor}</div>
+                                                        <div className="text-[10px] text-slate-400">{p.description}</div>
+                                                    </td>
+                                                    <td className="px-6 py-5">
+                                                        {p.receivedDate ? (
+                                                            <div className="flex items-center text-emerald-600 text-[10px] font-bold uppercase">
+                                                                <Icon icon={Icons.CheckCircle} size={14} className="mr-1.5" /> Received {p.receivedDate}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center">
+                                                                <span className="text-amber-500 text-[10px] font-bold uppercase">Due {p.expectedDelivery || 'N/A'}</span>
+                                                                {isAdmin && <button onClick={() => markReceived(p)} className="ml-3 text-[9px] text-blue-600 underline font-bold uppercase tracking-tighter">Receive</button>}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-5 text-right font-black text-slate-900 text-sm">{formatCurrency(p.amount)}</td>
+                                                    {isAdmin && <td className="px-6 py-5 text-right"><button onClick={() => deleteRecord('purchases', p.id)} className="text-slate-300 hover:text-rose-500"><Icon icon={Icons.Trash2} size={16}/></button></td>}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'apvs' && (
+                            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden animate-in">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 border-b border-slate-100">
+                                            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                <th className="px-8 py-5">APV Reference</th>
+                                                <th className="px-8 py-5">Vendor & Timing</th>
+                                                <th className="px-8 py-5 text-center">Aging & Funding</th>
+                                                <th className="px-8 py-5 text-right">Amount</th>
+                                                {isAdmin && <th className="px-8 py-5"></th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {apvs.map(a => {
+                                                var agingCat = getAgingCategory(a.dueDate);
                                                 return (
-                                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-8 py-6 font-bold text-blue-600 tracking-tight">{p.id}</td>
-                                                        <td className="px-8 py-6 font-semibold text-slate-700">{p.vendor}</td>
-                                                        <td className="px-8 py-6 text-right font-black text-slate-900">{formatCurrency(p.amount)}</td>
+                                                    <tr key={a.id} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-8 py-5 font-bold text-slate-700 text-sm">{a.id}</td>
+                                                        <td className="px-8 py-5">
+                                                            <div className="font-bold text-slate-700 text-sm">{a.vendor}</div>
+                                                            <div className="text-[9px] text-slate-400 uppercase font-bold mt-1">Due: {a.dueDate}</div>
+                                                        </td>
+                                                        <td className="px-8 py-5 text-center">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase ${agingCat === 'Current' ? 'bg-slate-100 text-slate-500' : 'bg-rose-100 text-rose-600'}`}>{agingCat}</span>
+                                                                <button 
+                                                                    onClick={() => toggleFunded(a)}
+                                                                    className={`px-3 py-1 rounded-full text-[9px] font-bold border transition-all ${a.funded ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                                                                >
+                                                                    {a.funded ? 'FUNDED' : 'PENDING FUND'}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-8 py-5 text-right font-black text-slate-900 text-sm">{formatCurrency(a.amount)}</td>
+                                                        {isAdmin && <td className="px-8 py-5 text-right"><button onClick={() => deleteRecord('apvs', a.id)} className="text-slate-300 hover:text-rose-500"><Icon icon={Icons.Trash2} size={16}/></button></td>}
                                                     </tr>
                                                 );
                                             })}
@@ -288,47 +325,136 @@
                                 </div>
                             </div>
                         )}
+                        
+                        {activeTab === 'analysis' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in">
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                                    <h3 className="font-bold text-slate-800 mb-6">Aging Distribution</h3>
+                                    <div className="space-y-4">
+                                        {Object.entries(metrics.aging).map(([cat, val]) => (
+                                            <div key={cat} className="space-y-1.5">
+                                                <div className="flex justify-between text-[10px] font-bold uppercase">
+                                                    <span className="text-slate-400">{cat}</span>
+                                                    <span className="text-slate-700">{formatCurrency(val)}</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full ${cat === 'Current' ? 'bg-blue-500' : 'bg-rose-500'}`} 
+                                                        style={{ width: `${(val / (metrics.unpaidTotal || 1)) * 100}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="bg-blue-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-center shadow-xl">
+                                    <Icon icon={Icons.Sparkles} size={32} className="text-blue-300 mb-4" />
+                                    <h3 className="text-xl font-bold mb-2">Lead Time Insights</h3>
+                                    <p className="text-blue-200 text-sm leading-relaxed">System is tracking lead times from PR received to PO issuance. Add dates in the Monitoring tab to populate lead-time analytics.</p>
+                                </div>
+                            </div>
+                        )}
                     </main>
 
+                    {/* Modals & Forms */}
                     {showAdminLogin && (
                         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-in">
-                                <div className="text-center mb-8">
-                                    <div className="bg-indigo-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-600">
-                                        <IconComp icon={Icons.Lock} size={32} />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-slate-800">Admin Lock</h3>
-                                    <p className="text-slate-400 text-sm font-medium mt-1">Default: admin123</p>
-                                </div>
-                                <form onSubmit={function(e) {
-                                    e.preventDefault();
-                                    if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); }
-                                    else alert("Invalid Access");
-                                }} className="space-y-6">
-                                    <input 
-                                        type="password" autoFocus value={adminPassword}
-                                        onChange={function(e) { setAdminPassword(e.target.value); }}
-                                        className="w-full p-5 bg-slate-50 rounded-2xl text-center text-2xl font-bold tracking-[0.5em] focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        placeholder="••••"
-                                    />
-                                    <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Unlock</button>
-                                    <button type="button" onClick={() => setShowAdminLogin(false)} className="w-full text-xs text-slate-400 font-bold uppercase tracking-widest text-center mt-4">Cancel</button>
+                            <div className="bg-white rounded-[3rem] p-10 w-full max-sm animate-in shadow-2xl">
+                                <h3 className="text-2xl font-black text-center mb-6">Super User Lock</h3>
+                                <form onSubmit={e => { e.preventDefault(); if(adminPassword==='admin123'){setIsAdmin(true); setShowAdminLogin(false); setAdminPassword('');} else alert("Access Denied");}} className="space-y-6">
+                                    <input type="password" autoFocus value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl text-center text-2xl font-bold focus:bg-white outline-none" placeholder="••••" />
+                                    <button className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Unlock Dashboard</button>
+                                    <button type="button" onClick={() => setShowAdminLogin(false)} className="w-full text-slate-400 text-xs font-bold uppercase mt-4 text-center">Cancel</button>
                                 </form>
                             </div>
+                        </div>
+                    )}
+
+                    {isPoModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <form onSubmit={handleAddPo} className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg space-y-4 shadow-2xl animate-in max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-xl font-bold text-slate-800 tracking-tight">Purchase Monitoring Entry</h3>
+                                    <button type="button" onClick={() => setIsPoModalOpen(false)}><Icon icon={Icons.X} size={20} className="text-slate-400"/></button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">PO Reference</label>
+                                        <input required placeholder="PO-2026-XXXX" value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">PR Received Date</label>
+                                        <input required type="date" value={newPo.prReceivedDate} onChange={e => setNewPo({...newPo, prReceivedDate: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">PO Issuance Date</label>
+                                        <input required type="date" value={newPo.poDate} onChange={e => setNewPo({...newPo, poDate: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Vendor Name</label>
+                                        <input required placeholder="Vendor Corp" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Total Amount</label>
+                                        <input required type="number" placeholder="0.00" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Expected Delivery</label>
+                                        <input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Description</label>
+                                        <textarea placeholder="Line items summary..." value={newPo.description} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none h-24" />
+                                    </div>
+                                </div>
+                                <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-200">Save Record</button>
+                            </form>
+                        </div>
+                    )}
+
+                    {isApvModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <form onSubmit={handleAddApv} className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg space-y-4 shadow-2xl animate-in">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-xl font-bold text-slate-800 tracking-tight">Payable Voucher Entry</h3>
+                                    <button type="button" onClick={() => setIsApvModalOpen(false)}><Icon icon={Icons.X} size={20} className="text-slate-400"/></button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">APV Ref</label>
+                                        <input required placeholder="APV-2026-XX" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">PO Linked Ref</label>
+                                        <input required placeholder="PO-2026-XX" value={newApv.poId} onChange={e => setNewApv({...newApv, poId: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Vendor</label>
+                                        <input required placeholder="Vendor Corp" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Invoice Date</label>
+                                        <input required type="date" value={newApv.invoiceDate} onChange={e => setNewApv({...newApv, invoiceDate: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Due Date</label>
+                                        <input required type="date" value={newApv.dueDate} onChange={e => setNewApv({...newApv, dueDate: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Voucher Amount</label>
+                                        <input required type="number" placeholder="0.00" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl outline-none" />
+                                    </div>
+                                </div>
+                                <button className="w-full py-4 bg-slate-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-200">Log Payable</button>
+                            </form>
                         </div>
                     )}
                 </div>
             );
         }
 
-        // Final UI cleanup and React Render
-        var diagnosticDiv = document.getElementById('diagnostic-ui');
-        if (diagnosticDiv) diagnosticDiv.style.display = 'none';
-        
-        var mountNode = document.getElementById('root');
-        if (mountNode) {
-            ReactDOM.createRoot(mountNode).render(<App />);
-        }
+        var root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
 
     </script>
 </body>
