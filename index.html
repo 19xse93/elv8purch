@@ -14,8 +14,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
-  deleteDoc,
-  query
+  deleteDoc
 } from 'firebase/firestore';
 import { 
   LayoutDashboard, 
@@ -31,7 +30,6 @@ import {
   Activity,
   User,
   Wallet,
-  Edit3,
   Menu,
   ShieldCheck,
   Pencil,
@@ -44,6 +42,7 @@ import {
 } from 'lucide-react';
 
 // --- Environment Setup ---
+// These variables are provided by the internal environment at runtime.
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
   authDomain: "elev8-be0f4.firebaseapp.com",
@@ -86,6 +85,17 @@ const getAgingColor = (category: string) => {
     case '> 90 Days': return 'bg-rose-600 text-white border-rose-700';
     case 'Paid': return 'bg-gray-100 text-gray-600 border-gray-200';
     default: return 'bg-gray-100 text-gray-800';
+  }
+};
+
+const getAgingBgColor = (category: string) => {
+  switch (category) {
+    case 'Current': return 'bg-emerald-500';
+    case '1-30 Days': return 'bg-yellow-400';
+    case '31-60 Days': return 'bg-orange-500';
+    case '61-90 Days': return 'bg-red-500';
+    case '> 90 Days': return 'bg-rose-700';
+    default: return 'bg-gray-300';
   }
 };
 
@@ -137,7 +147,7 @@ export default function App() {
   const [weeklyFund, setWeeklyFund] = useState(5000000);
   const [editFundAmount, setEditFundAmount] = useState('');
 
-  // Authentication Rule 3
+  // Authentication Setup
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -151,7 +161,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Data Listeners Rules 1 & 2
+  // Firestore Listeners
   useEffect(() => {
     if (!user) return;
     
@@ -236,7 +246,7 @@ export default function App() {
     };
   }, [purchases, apvs]);
 
-  // Logic Handlers
+  // Actions
   const handleSavePo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !user) return;
@@ -286,12 +296,18 @@ export default function App() {
     }
   };
 
+  const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
+  const openEditPo = (po: any) => { setEditingPoId(po.id); setNewPo({ ...po, amount: po.amount.toString() }); setIsPoModalOpen(true); };
+  const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: null }); setIsApvModalOpen(true); };
+  const openEditApv = (apv: any) => { setEditingApvId(apv.id); setNewApv({ ...apv, amount: apv.amount.toString() }); setIsApvModalOpen(true); };
+
+  const handleDeletePo = async (id: string) => { if (isAdmin && confirm("Delete PO?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'purchases', id)); };
+  const handleDeleteApv = async (id: string) => { if (isAdmin && confirm("Delete APV?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apvs', id)); };
+
   const toggleFunded = async (apv: any) => {
     if (!isAdmin || !user) return;
-    try {
-        const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', apv.id);
-        await updateDoc(apvRef, { funded: !apv.funded });
-    } catch (e) { console.error(e); }
+    const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', apv.id);
+    await updateDoc(apvRef, { funded: !apv.funded });
   };
 
   const markReceived = async (po: any) => {
@@ -303,14 +319,6 @@ export default function App() {
     }
   };
 
-  const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
-  const openEditPo = (po: any) => { setEditingPoId(po.id); setNewPo({ ...po, amount: po.amount.toString() }); setIsPoModalOpen(true); };
-  const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: null }); setIsApvModalOpen(true); };
-  const openEditApv = (apv: any) => { setEditingApvId(apv.id); setNewApv({ ...apv, amount: apv.amount.toString() }); setIsApvModalOpen(true); };
-
-  const handleDeletePo = async (id: string) => { if (isAdmin && confirm("Delete PO?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'purchases', id)); };
-  const handleDeleteApv = async (id: string) => { if (isAdmin && confirm("Delete APV?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apvs', id)); };
-
   if (isDataLoading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
         <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
@@ -320,7 +328,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 flex flex-col md:relative md:translate-x-0 transform transition-transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 text-white font-black text-xl flex items-center gap-2 border-b border-slate-800">
           <TrendingUp className="text-blue-500" /> ProcureDesk
@@ -420,8 +427,8 @@ export default function App() {
             <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden animate-in">
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b">
-                    <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <thead className="bg-slate-50 border-b text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <tr>
                       <th className="px-6 py-4">PO / Personnel</th>
                       <th className="px-6 py-4">PR to PO Lifecycle</th>
                       <th className="px-6 py-4">Delivery Timeline</th>
@@ -469,13 +476,13 @@ export default function App() {
             <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden animate-in">
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b">
-                    <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <thead className="bg-slate-50 border-b text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <tr>
                       <th className="px-6 py-4">Voucher Ref</th>
                       <th className="px-6 py-4">Vendor & PO</th>
                       <th className="px-6 py-4 text-center">Aging & Funding</th>
                       <th className="px-6 py-4 text-right">Amount</th>
-                      {isAdmin && <th className="px-6 py-4">Actions</th>}
+                      {isAdmin && <th className="px-6 py-4 text-center">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y text-sm">
@@ -523,7 +530,7 @@ export default function App() {
       {/* Modals */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-in">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl">
             <h3 className="text-2xl font-black text-center mb-6 tracking-tight">Super User Access</h3>
             <form onSubmit={handleAdminLoginSubmit} className="space-y-6">
               <input type="password" autoFocus placeholder="Passcode" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl text-center text-3xl font-black border-2 border-transparent focus:border-blue-500 transition-all outline-none" />
@@ -536,7 +543,7 @@ export default function App() {
 
       {isPoModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleSavePo} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in space-y-6 max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleSavePo} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-black tracking-tight">{editingPoId ? 'Edit Purchase Order' : 'New Purchase Order'}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1">
@@ -578,7 +585,7 @@ export default function App() {
 
       {isApvModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleSaveApv} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in space-y-6">
+          <form onSubmit={handleSaveApv} className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl space-y-6">
             <h3 className="text-2xl font-black tracking-tight">{editingApvId ? 'Edit APV Record' : 'New APV Record'}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
@@ -612,7 +619,7 @@ export default function App() {
 
       {isFundModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleUpdateFund} className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-in space-y-6">
+          <form onSubmit={handleUpdateFund} className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl space-y-6">
             <div className="text-center">
               <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><Wallet size={32}/></div>
               <h3 className="text-2xl font-black tracking-tight">Weekly Allocation</h3>
