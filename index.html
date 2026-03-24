@@ -1,7 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken, 
+  onAuthStateChanged, 
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc,
+  query
+} from 'firebase/firestore';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -21,24 +36,28 @@ import {
   ShieldCheck,
   Pencil,
   Timer as LucideTimer,
-  X
+  X,
+  AlertTriangle,
+  Unlock,
+  Check,
+  Loader2
 } from 'lucide-react';
 
-// --- Firebase Initialization ---
-const firebaseConfig = {
+// --- Mandatory Environment Variables ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
   authDomain: "elev8-be0f4.firebaseapp.com",
   projectId: "elev8-be0f4",
   storageBucket: "elev8-be0f4.firebasestorage.app",
   messagingSenderId: "939507136986",
-  appId: "1:939507136986:web:8a8d417cbbc80921eda8e3",
-  measurementId: "G-C98765TPWP"
+  appId: "1:939507136986:web:8a8d417cbbc80921eda8e3"
 };
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-procurement-app';
 
+// --- Initialization ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'my-procurement-app'; 
 
 const TODAY = new Date('2026-03-24T00:00:00'); 
 
@@ -118,18 +137,30 @@ export default function App() {
   const [weeklyFund, setWeeklyFund] = useState(5000000);
   const [editFundAmount, setEditFundAmount] = useState('');
 
+  // Authentication Setup (Mandatory Rule 3)
   useEffect(() => {
-    signInAnonymously(auth);
-    return onAuthStateChanged(auth, setUser);
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
   }, []);
 
+  // Data Sync (Rule 1 & 2)
   useEffect(() => {
     if (!user) return;
+    
+    // Paths follow Mandatory Rule 1
     const purchasesRef = collection(db, 'artifacts', appId, 'public', 'data', 'purchases');
     const apvsRef = collection(db, 'artifacts', appId, 'public', 'data', 'apvs');
     const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
 
-    onSnapshot(doc(settingsRef, 'treasury'), (docSnap) => {
+    const unsubSettings = onSnapshot(doc(settingsRef, 'treasury'), (docSnap) => {
       if (docSnap.exists()) {
         const amt = docSnap.data().amount;
         setWeeklyFund(amt);
@@ -137,14 +168,20 @@ export default function App() {
       }
     });
 
-    onSnapshot(purchasesRef, (snap) => {
+    const unsubPurchases = onSnapshot(purchasesRef, (snap) => {
       setPurchases(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.id.localeCompare(b.id)));
     });
 
-    onSnapshot(apvsRef, (snap) => {
+    const unsubApvs = onSnapshot(apvsRef, (snap) => {
       setApvs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.id.localeCompare(b.id)));
       setIsDataLoading(false);
     });
+
+    return () => {
+        unsubSettings();
+        unsubPurchases();
+        unsubApvs();
+    };
   }, [user]);
 
   const metrics = useMemo(() => {
@@ -218,7 +255,11 @@ export default function App() {
     if (!isAdmin || !user) return;
     try {
       const poRef = doc(db, 'artifacts', appId, 'public', 'data', 'purchases', newPo.id);
-      await setDoc(poRef, { ...newPo, amount: Number(newPo.amount), status: editingPoId ? purchases.find(p => p.id === editingPoId)?.status : 'Pending' });
+      await setDoc(poRef, { 
+          ...newPo, 
+          amount: Number(newPo.amount), 
+          status: editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending' 
+      });
       setIsPoModalOpen(false);
     } catch (e) { console.error(e); }
   };
@@ -240,7 +281,11 @@ export default function App() {
     if (!isAdmin || !user) return;
     try {
       const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', newApv.id);
-      await setDoc(apvRef, { ...newApv, amount: Number(newApv.amount), status: editingApvId ? apvs.find(a => a.id === editingApvId)?.status : 'Unpaid' });
+      await setDoc(apvRef, { 
+          ...newApv, 
+          amount: Number(newApv.amount), 
+          status: editingApvId ? (apvs.find(a => a.id === editingApvId)?.status || 'Unpaid') : 'Unpaid' 
+      });
       setIsApvModalOpen(false);
     } catch (e) { console.error(e); }
   };
@@ -288,7 +333,12 @@ export default function App() {
 
   const handleTabSwitch = (t: string) => { setActiveTab(t); setIsMobileMenuOpen(false); };
 
-  if (isDataLoading) return <div className="h-screen flex items-center justify-center font-bold text-slate-400">LOADING DATA...</div>;
+  if (isDataLoading) return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+          <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
+          <h2 className="font-black text-xl tracking-widest uppercase">Initializing Sync...</h2>
+      </div>
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
@@ -298,7 +348,11 @@ export default function App() {
           <TrendingUp className="text-blue-500" /> ProcureDesk
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {[{id:'dashboard', label:'Dashboard', icon:LayoutDashboard}, {id:'purchases', label:'PO Monitoring', icon:ShoppingCart}, {id:'apvs', label:'APV Aging', icon:FileText}].map(t => (
+          {[
+            {id:'dashboard', label:'Dashboard', icon:LayoutDashboard}, 
+            {id:'purchases', label:'PO Monitoring', icon:ShoppingCart}, 
+            {id:'apvs', label:'APV Aging', icon:FileText}
+          ].map(t => (
             <button key={t.id} onClick={() => handleTabSwitch(t.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-slate-200'}`}>
               <t.icon size={18} /> {t.label}
             </button>
@@ -308,14 +362,14 @@ export default function App() {
           {!isAdmin ? (
             <button onClick={() => setShowAdminLogin(true)} className="w-full py-3 bg-blue-600/10 text-blue-500 rounded-xl font-bold text-xs uppercase tracking-widest border border-blue-900/50">Admin Unlock</button>
           ) : (
-            <button onClick={() => setIsAdmin(false)} className="w-full py-3 bg-emerald-600/10 text-emerald-500 rounded-xl font-bold text-xs uppercase border border-emerald-900/50 flex items-center justify-center gap-2"><ShieldCheck size={14}/> Super User Active</button>
+            <button onClick={() => setIsAdmin(false)} className="w-full py-3 bg-emerald-600/10 text-emerald-500 rounded-xl font-bold text-xs uppercase border border-emerald-900/50 flex items-center justify-center gap-2 transition-all hover:bg-emerald-600/20"><ShieldCheck size={14}/> Super User Active</button>
           )}
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative flex flex-col">
-        <header className="bg-white border-b p-4 md:p-6 flex justify-between items-center sticky top-0 z-40">
+        <header className="bg-white border-b p-4 md:p-6 flex justify-between items-center sticky top-0 z-40 shadow-sm">
           <div className="flex items-center gap-4">
             <button className="md:hidden" onClick={() => setIsMobileMenuOpen(true)}><Menu /></button>
             <h2 className="text-2xl font-black tracking-tight capitalize">{activeTab.replace('-',' ')}</h2>
@@ -337,21 +391,21 @@ export default function App() {
                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2"><Wallet size={14} className="text-blue-500"/> Treasury Fund Allocation</p>
                   <h3 className="text-5xl font-black tracking-tighter">{formatCurrency(weeklyFund - metrics.tFundedUnpaid)}</h3>
                   <div className="mt-8 flex gap-3">
-                    <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-bold uppercase">Weekly Allocation: {formatCurrency(weeklyFund)}</div>
+                    <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-bold uppercase">Weekly Total: {formatCurrency(weeklyFund)}</div>
                     <div className="px-4 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 rounded-full text-[10px] font-bold uppercase tracking-tight">Earmarked: {formatCurrency(metrics.tFundedUnpaid)}</div>
                   </div>
                 </div>
                 <div className="p-4 bg-white/5 border border-white/10 rounded-3xl relative z-10 w-full md:w-auto text-center md:text-left">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Payables</p>
                   <h4 className="text-3xl font-black text-amber-400">{formatCurrency(metrics.tOutstanding)}</h4>
-                  {isAdmin && <button onClick={() => {setEditFundAmount(weeklyFund.toString()); setIsFundModalOpen(true);}} className="mt-4 w-full py-2 bg-blue-600 rounded-xl text-[10px] font-bold uppercase tracking-widest">Update Funds</button>}
+                  {isAdmin && <button onClick={() => {setEditFundAmount(weeklyFund.toString()); setIsFundModalOpen(true);}} className="mt-4 w-full py-2 bg-blue-600 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all hover:bg-blue-700">Update Funds</button>}
                 </div>
                 <Activity size={300} className="absolute -right-20 -bottom-20 opacity-5" />
               </div>
 
               {/* Performance Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex items-center justify-between">
+                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex items-center justify-between transition-all hover:shadow-md">
                   <div className="flex-1">
                     <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Avg PR-to-PO turnaround</p>
                     <h4 className="text-3xl font-black">{metrics.avgProc} Days</h4>
@@ -364,12 +418,13 @@ export default function App() {
                         ))}
                     </div>
                   </div>
-                  <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl ml-4"><Clock size={28}/></div>
+                  <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl ml-4"><LucideTimer size={28}/></div>
                 </div>
-                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex items-center justify-between">
+                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex items-center justify-between transition-all hover:shadow-md">
                   <div>
                     <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Vendor On-Time Delivery</p>
                     <h4 className="text-3xl font-black text-emerald-600">{metrics.onTime}%</h4>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tight">Performance Index</p>
                   </div>
                   <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl"><Truck size={28}/></div>
                 </div>
@@ -378,7 +433,7 @@ export default function App() {
               {/* Aging Breakdown */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {Object.entries(metrics.agingSummary).map(([cat, val]: [string, any]) => (
-                  <div key={cat} className="bg-white p-6 rounded-[1.5rem] border shadow-sm">
+                  <div key={cat} className="bg-white p-6 rounded-[1.5rem] border shadow-sm transition-all hover:translate-y-[-2px]">
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{cat}</p>
                     <h5 className={`text-xl font-black ${val > 0 && cat !== 'Current' ? 'text-rose-600' : 'text-slate-800'}`}>{formatCurrency(val)}</h5>
                   </div>
@@ -421,9 +476,9 @@ export default function App() {
                           {isAdmin && (
                             <td className="px-6 py-5">
                               <div className="flex gap-2">
-                                <button onClick={() => openEditPo(p)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={16}/></button>
-                                <button onClick={() => markReceived(p)} className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"><CheckCircle size={16}/></button>
-                                <button onClick={() => handleDeletePo(p.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={16}/></button>
+                                <button onClick={() => openEditPo(p)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit Record"><Pencil size={16}/></button>
+                                <button onClick={() => markReceived(p)} className="p-2 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark Received"><CheckCircle size={16}/></button>
+                                <button onClick={() => handleDeletePo(p.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors" title="Delete Record"><Trash2 size={16}/></button>
                               </div>
                             </td>
                           )}
@@ -462,15 +517,21 @@ export default function App() {
                           <td className="px-6 py-5 text-center">
                             <div className="flex flex-col items-center gap-1">
                               <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase border ${getAgingColor(aging)}`}>{aging}</span>
-                              <button disabled={!isAdmin} onClick={() => toggleFunded(a)} className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border transition-all ${a.funded ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{a.funded ? 'FUNDED' : 'PENDING'}</button>
+                              <button 
+                                disabled={!isAdmin} 
+                                onClick={() => toggleFunded(a)} 
+                                className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border transition-all ${a.funded ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                              >
+                                {a.funded ? 'FUNDED' : 'PENDING'}
+                              </button>
                             </div>
                           </td>
                           <td className="px-6 py-5 text-right font-black">{formatCurrency(a.amount)}</td>
                           {isAdmin && (
                             <td className="px-6 py-5">
-                              <div className="flex gap-2">
-                                <button onClick={() => openEditApv(a)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={16}/></button>
-                                <button onClick={() => handleDeleteApv(a.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={16}/></button>
+                              <div className="flex gap-2 justify-center">
+                                <button onClick={() => openEditApv(a)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit APV"><Pencil size={16}/></button>
+                                <button onClick={() => handleDeleteApv(a.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors" title="Delete APV"><Trash2 size={16}/></button>
                               </div>
                             </td>
                           )}
@@ -492,7 +553,7 @@ export default function App() {
             <h3 className="text-2xl font-black text-center mb-6 tracking-tight">Super User Access</h3>
             <form onSubmit={handleAdminLoginSubmit} className="space-y-6">
               <input type="password" autoFocus placeholder="Passcode" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl text-center text-3xl font-black border-2 border-transparent focus:border-blue-500 transition-all outline-none" />
-              <button className="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest shadow-xl">Unlock Controls</button>
+              <button className="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold uppercase tracking-widest shadow-xl transition-all hover:bg-black">Unlock Controls</button>
               <button type="button" onClick={() => setShowAdminLogin(false)} className="w-full text-slate-400 font-bold text-xs uppercase text-center mt-2 tracking-widest">Cancel</button>
             </form>
           </div>
@@ -535,8 +596,8 @@ export default function App() {
               </div>
             </div>
             <div className="flex gap-4 pt-4">
-              <button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase text-xs tracking-widest">Cancel</button>
-              <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl shadow-blue-200">Save Record</button>
+              <button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase text-xs tracking-widest transition-all hover:bg-slate-200">Cancel</button>
+              <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl shadow-blue-200 transition-all hover:bg-blue-700">Save Record</button>
             </div>
           </form>
         </div>
@@ -570,8 +631,8 @@ export default function App() {
               </div>
             </div>
             <div className="flex gap-4 pt-4">
-              <button type="button" onClick={() => setIsApvModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase text-xs tracking-widest">Cancel</button>
-              <button type="submit" className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl">Save Record</button>
+              <button type="button" onClick={() => setIsApvModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase text-xs tracking-widest transition-all hover:bg-slate-200">Cancel</button>
+              <button type="submit" className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl transition-all hover:bg-black">Save Record</button>
             </div>
           </form>
         </div>
@@ -586,10 +647,10 @@ export default function App() {
               <h3 className="text-2xl font-black tracking-tight">Weekly Allocation</h3>
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Designated Treasury Fund</p>
             </div>
-            <input required type="number" value={editFundAmount} onChange={e => setEditFundAmount(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl text-center text-3xl font-black border-2 border-transparent focus:border-blue-500 outline-none" placeholder="0.00" />
+            <input required type="number" value={editFundAmount} onChange={e => setEditFundAmount(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl text-center text-3xl font-black border-2 border-transparent focus:border-blue-500 outline-none transition-all" placeholder="0.00" />
             <div className="flex flex-col gap-3">
-              <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest shadow-xl shadow-blue-100">Update Budget</button>
-              <button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full text-slate-400 font-bold text-xs uppercase text-center tracking-widest">Cancel</button>
+              <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold uppercase tracking-widest shadow-xl shadow-blue-100 transition-all hover:bg-blue-700">Update Budget</button>
+              <button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full text-slate-400 font-bold text-xs uppercase text-center tracking-widest hover:text-slate-600 transition-colors">Cancel</button>
             </div>
           </form>
         </div>
