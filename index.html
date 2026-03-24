@@ -23,17 +23,31 @@
 </head>
 <body>
     <div id="root">
-        <div style="text-align: center; color: #64748b; font-family: sans-serif;">
-            <div style="width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
-            <p style="font-size: 14px; font-weight: 500;">Connecting to elev8-be0f4...</p>
+        <div id="initial-loader" style="text-align: center; color: #64748b; font-family: sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;">
+            <div style="width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+            <p id="loader-text" style="font-size: 14px; font-weight: 500;">Establishing Secure Connection...</p>
+            <div id="troubleshoot-area" style="display: none; margin-top: 20px;">
+                <p style="font-size: 12px; color: #ef4444; margin-bottom: 12px;">Connection taking longer than usual.</p>
+                <button onclick="window.location.reload()" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer;">Retry Sync</button>
+            </div>
         </div>
     </div>
+    <script>
+        setTimeout(() => {
+            const area = document.getElementById('troubleshoot-area');
+            if (area) area.style.display = 'block';
+        }, 8000);
+    </script>
     <style> @keyframes spin { to { transform: rotate(360deg); } } </style>
 
-    <script type="text/babel">
+    <script type="text/babel" data-presets="react">
+        // IIFE wrapper to solve "Infinity" re-declaration error in Babel Standalone
         (() => {
+            "use strict";
             try {
                 const { useState, useMemo, useEffect } = React;
+                
+                // Safe extraction of Lucide Icons
                 const Icons = window.LucideReact || {};
                 const { 
                     LayoutDashboard, ShoppingCart, FileText, AlertCircle, Clock, CheckCircle, TrendingUp, DollarSign, Calendar, Building, Sparkles, Mail, Loader2, X, Copy, Check, Truck, CalendarDays, Lock, Plus, Trash2, AlertTriangle, Activity, Unlock, User, Wallet, Send, Edit3, Menu, ShieldCheck, Database
@@ -48,6 +62,7 @@
                     appId: "1:939507136986:web:8a8d417cbbc80921eda8e3"
                 };
 
+                // Initialize Firebase
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 const auth = firebase.auth();
                 const db = firebase.firestore();
@@ -55,14 +70,16 @@
                 const TODAY = new Date('2026-03-24T00:00:00'); 
 
                 const formatCurrency = (amt) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amt);
-                const getAgingCategory = (dueDate, status) => {
-                    if (status === 'Paid') return 'Paid';
-                    const diff = Math.ceil((TODAY - new Date(dueDate)) / (1000 * 60 * 60 * 24));
-                    if (diff <= 0) return 'Current';
-                    if (diff <= 30) return '1-30 Days';
-                    if (diff <= 60) return '31-60 Days';
-                    return '> 60 Days';
-                };
+
+                // Sample data to seed if DB is empty
+                const INITIAL_PURCHASES = [
+                    { id: 'PO-2026-001', vendor: 'TechCorp Supplies', amount: 150000, date: '2026-03-01', expectedDelivery: '2026-03-10', status: 'Pending', description: 'Engineering Laptops' },
+                    { id: 'PO-2026-002', vendor: 'OfficeWorld', amount: 25000, date: '2026-03-05', expectedDelivery: '2026-03-20', status: 'Pending', description: 'Ergonomic Chairs' }
+                ];
+
+                const INITIAL_APVS = [
+                    { id: 'APV-26-001', poId: 'PO-2026-001', vendor: 'TechCorp Supplies', amount: 150000, dueDate: '2026-04-01', status: 'Unpaid', funded: true }
+                ];
 
                 function App() {
                     const [activeTab, setActiveTab] = useState('dashboard');
@@ -74,7 +91,8 @@
                     const [isLoading, setIsLoading] = useState(true);
                     const [showAdminLogin, setShowAdminLogin] = useState(false);
                     const [adminPassword, setAdminPassword] = useState('');
-                    
+                    const [error, setError] = useState(null);
+
                     // Form States
                     const [isPoModalOpen, setIsPoModalOpen] = useState(false);
                     const [isApvModalOpen, setIsApvModalOpen] = useState(false);
@@ -82,50 +100,49 @@
                     const [newApv, setNewApv] = useState({ id: '', poId: '', vendor: '', amount: '', dueDate: '' });
 
                     useEffect(() => {
-                        return auth.onAuthStateChanged(async (u) => {
-                            if (!u) await auth.signInAnonymously();
-                            else setUser(u);
+                        const unsub = auth.onAuthStateChanged(async (u) => {
+                            if (!u) {
+                                try {
+                                    await auth.signInAnonymously();
+                                } catch (err) {
+                                    setError("Authentication failed. Please check Firebase Auth settings.");
+                                    setIsLoading(false);
+                                }
+                            } else {
+                                setUser(u);
+                            }
                         });
+                        return () => unsub();
                     }, []);
 
                     useEffect(() => {
                         if (!user) return;
                         const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
                         
-                        const unsubP = baseRef.collection('purchases').onSnapshot(snap => setPurchases(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+                        const unsubP = baseRef.collection('purchases').onSnapshot(snap => {
+                            if (snap.empty) {
+                                INITIAL_PURCHASES.forEach(p => baseRef.collection('purchases').doc(p.id).set(p));
+                            } else {
+                                setPurchases(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                            }
+                        }, err => setError("Database access denied. Check Firestore Rules."));
+
                         const unsubA = baseRef.collection('apvs').onSnapshot(snap => {
-                            setApvs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                            if (snap.empty) {
+                                INITIAL_APVS.forEach(a => baseRef.collection('apvs').doc(a.id).set(a));
+                            } else {
+                                setApvs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                            }
                             setIsLoading(false);
                         });
+
                         const unsubS = baseRef.collection('settings').doc('treasury').onSnapshot(doc => {
                             if (doc.exists) setWeeklyFund(doc.data().amount);
+                            else baseRef.collection('settings').doc('treasury').set({ amount: 5000000 });
                         });
 
                         return () => { unsubP(); unsubA(); unsubS(); };
                     }, [user]);
-
-                    const handleAddPo = async (e) => {
-                        e.preventDefault();
-                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('purchases').doc(newPo.id).set({ ...newPo, status: 'Pending', receivedDate: null });
-                        setIsPoModalOpen(false);
-                    };
-
-                    const handleAddApv = async (e) => {
-                        e.preventDefault();
-                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('apvs').doc(newApv.id).set({ ...newApv, status: 'Unpaid', funded: false, settledDate: null });
-                        setIsApvModalOpen(false);
-                    };
-
-                    const toggleFunded = async (apv) => {
-                        if (!isAdmin) return;
-                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('apvs').doc(apv.id).update({ funded: !apv.funded });
-                    };
-
-                    const markPaid = async (apv) => {
-                        if (!isAdmin) return;
-                        const date = prompt("Enter payment date (YYYY-MM-DD)", TODAY.toISOString().split('T')[0]);
-                        if (date) await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('apvs').doc(apv.id).update({ status: 'Paid', settledDate: date });
-                    };
 
                     const metrics = useMemo(() => {
                         const unpaid = apvs.filter(a => a.status === 'Unpaid');
@@ -134,12 +151,51 @@
                         return { totalOutstanding, earmarked };
                     }, [apvs]);
 
-                    if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" /></div>;
+                    const handleAddPo = async (e) => {
+                        e.preventDefault();
+                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('purchases').doc(newPo.id).set({ ...newPo, status: 'Pending', receivedDate: null });
+                        setIsPoModalOpen(false);
+                        setNewPo({ id: '', vendor: '', amount: '', date: TODAY.toISOString().split('T')[0], expectedDelivery: '', description: '' });
+                    };
+
+                    const handleAddApv = async (e) => {
+                        e.preventDefault();
+                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('apvs').doc(newApv.id).set({ ...newApv, status: 'Unpaid', funded: false, settledDate: null });
+                        setIsApvModalOpen(false);
+                        setNewApv({ id: '', poId: '', vendor: '', amount: '', dueDate: '' });
+                    };
+
+                    const handleLogin = (e) => {
+                        e.preventDefault();
+                        if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); }
+                        else alert("Incorrect Passcode");
+                    };
+
+                    const toggleFunded = async (apv) => {
+                        if (!isAdmin) return;
+                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('apvs').doc(apv.id).update({ funded: !apv.funded });
+                    };
+
+                    if (error) return (
+                        <div className="h-screen flex items-center justify-center p-6 text-center flex-col">
+                            <AlertTriangle size={48} className="text-rose-500 mb-4" />
+                            <h3 className="text-xl font-bold mb-2">System Error</h3>
+                            <p className="text-slate-500 text-sm mb-6">{error}</p>
+                            <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold">Retry Connection</button>
+                        </div>
+                    );
+
+                    if (isLoading) return (
+                        <div className="h-screen flex flex-col items-center justify-center bg-white">
+                            <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+                            <p className="text-slate-500 font-medium tracking-tight">Syncing Records...</p>
+                        </div>
+                    );
 
                     return (
                         <div className="flex h-screen overflow-hidden">
                             <aside className="w-64 bg-slate-900 text-slate-400 flex flex-col hidden md:flex">
-                                <div className="p-8 border-b border-slate-800 flex items-center text-white font-bold"><TrendingUp className="mr-3 text-blue-500"/> ProcureDesk</div>
+                                <div className="p-8 border-b border-slate-800 flex items-center text-white font-bold"><TrendingUp className="mr-3 text-blue-500" /> ProcureDesk</div>
                                 <nav className="p-4 space-y-2 flex-1">
                                     {['dashboard', 'purchases', 'apvs'].map(t => (
                                         <button key={t} onClick={() => setActiveTab(t)} className={`w-full text-left px-4 py-3 rounded-xl capitalize ${activeTab === t ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}>{t}</button>
@@ -147,9 +203,11 @@
                                 </nav>
                                 <div className="p-6 bg-slate-950">
                                     {!isAdmin ? (
-                                        <button onClick={() => setShowAdminLogin(true)} className="w-full py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-bold uppercase">Unlock Admin</button>
+                                        <button onClick={() => setShowAdminLogin(true)} className="w-full py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-bold uppercase">Admin Unlock</button>
                                     ) : (
-                                        <button onClick={() => setIsAdmin(false)} className="w-full py-2 bg-slate-800 text-slate-400 rounded-lg text-xs font-bold uppercase">Admin Active</button>
+                                        <div className="flex items-center justify-center text-[10px] font-bold text-emerald-500 uppercase py-2 border border-emerald-500/20 rounded-lg bg-emerald-500/5">
+                                            <ShieldCheck size={12} className="mr-2" /> Admin Access Active
+                                        </div>
                                     )}
                                 </div>
                             </aside>
@@ -159,8 +217,8 @@
                                     <h2 className="text-2xl font-black text-slate-800 capitalize">{activeTab}</h2>
                                     {isAdmin && (
                                         <div className="flex gap-2">
-                                            <button onClick={() => setIsPoModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-200">+ PO</button>
-                                            <button onClick={() => setIsApvModalOpen(true)} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-slate-200">+ APV</button>
+                                            <button onClick={() => setIsPoModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-200">+ New PO</button>
+                                            <button onClick={() => setIsApvModalOpen(true)} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-200">+ New APV</button>
                                         </div>
                                     )}
                                 </header>
@@ -168,14 +226,15 @@
                                 {activeTab === 'dashboard' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in">
                                         <div className="bg-slate-900 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden">
-                                            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Weekly Fund Available</p>
+                                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Available Weekly Liquidity</p>
                                             <h3 className="text-4xl font-black">{formatCurrency(weeklyFund - metrics.earmarked)}</h3>
                                             <div className="mt-8 flex gap-4">
                                                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex-1">
-                                                    <p className="text-white/40 text-[10px] font-bold uppercase">Total Outstanding</p>
+                                                    <p className="text-white/40 text-[10px] font-bold uppercase">Outstanding APV</p>
                                                     <p className="text-lg font-bold">{formatCurrency(metrics.totalOutstanding)}</p>
                                                 </div>
                                             </div>
+                                            <div className="absolute top-0 right-0 p-8 opacity-5"><Database size={200} /></div>
                                         </div>
                                     </div>
                                 )}
@@ -184,14 +243,14 @@
                                     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-in">
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 border-b border-slate-100">
-                                                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><th className="px-6 py-4">Ref</th><th className="px-6 py-4">Vendor</th><th className="px-6 py-4 text-right">Amount</th></tr>
+                                                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><th className="px-6 py-4">PO Reference</th><th className="px-6 py-4">Vendor</th><th className="px-6 py-4 text-right">Amount</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-50">
-                                                {purchases.map(p => (
+                                                {purchases.length === 0 ? <tr><td colSpan="3" className="p-10 text-center text-slate-400">Empty Record</td></tr> : purchases.map(p => (
                                                     <tr key={p.id} className="text-sm">
                                                         <td className="px-6 py-4 font-bold text-blue-600">{p.id}</td>
-                                                        <td className="px-6 py-4 font-semibold">{p.vendor}</td>
-                                                        <td className="px-6 py-4 text-right font-black">{formatCurrency(p.amount)}</td>
+                                                        <td className="px-6 py-4 font-semibold text-slate-700">{p.vendor}</td>
+                                                        <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(p.amount)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -203,20 +262,18 @@
                                     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden animate-in">
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 border-b border-slate-100">
-                                                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><th className="px-6 py-4">APV Ref</th><th className="px-6 py-4">Vendor</th><th className="px-6 py-4 text-center">Status</th><th className="px-6 py-4 text-right">Amount</th></tr>
+                                                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><th className="px-6 py-4">APV Ref</th><th className="px-6 py-4 text-center">Funding</th><th className="px-6 py-4 text-right">Amount</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-50">
-                                                {apvs.map(a => (
+                                                {apvs.length === 0 ? <tr><td colSpan="3" className="p-10 text-center text-slate-400">Empty Record</td></tr> : apvs.map(a => (
                                                     <tr key={a.id} className="text-sm">
                                                         <td className="px-6 py-4 font-bold text-slate-700">{a.id}</td>
-                                                        <td className="px-6 py-4 font-semibold">{a.vendor}</td>
                                                         <td className="px-6 py-4 text-center">
-                                                            {a.status === 'Paid' ? <span className="text-emerald-600 font-bold uppercase text-[10px]">Paid</span> : (
-                                                                <button onClick={() => toggleFunded(a)} className={`px-3 py-1 rounded-full text-[10px] font-bold border ${a.funded ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>{a.funded ? 'Funded' : 'Pending'}</button>
-                                                            )}
-                                                            {a.funded && a.status === 'Unpaid' && isAdmin && <button onClick={() => markPaid(a)} className="ml-2 text-[10px] text-blue-600 font-bold underline uppercase">Pay</button>}
+                                                            <button onClick={() => toggleFunded(a)} disabled={!isAdmin} className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-colors ${a.funded ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                                                                {a.funded ? 'FUNDED' : 'PENDING'}
+                                                            </button>
                                                         </td>
-                                                        <td className="px-6 py-4 text-right font-black">{formatCurrency(a.amount)}</td>
+                                                        <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(a.amount)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -224,60 +281,63 @@
                                     </div>
                                 )}
 
-                                {/* Modals */}
+                                {/* Admin Login Modal */}
                                 {showAdminLogin && (
                                     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-                                        <div className="bg-white rounded-[40px] p-10 w-full max-w-sm">
-                                            <h3 className="text-2xl font-black mb-6 text-center">Admin Login</h3>
-                                            <input type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center text-xl" placeholder="••••" />
-                                            <button onClick={handleLogin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold">Unlock</button>
-                                            <button onClick={() => setShowAdminLogin(false)} className="w-full mt-4 text-slate-400 text-sm">Cancel</button>
+                                        <div className="bg-white rounded-[40px] p-10 w-full max-w-sm shadow-2xl">
+                                            <h3 className="text-2xl font-black mb-6 text-center text-slate-800">System Lock</h3>
+                                            <input type="password" autoFocus value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center text-xl font-bold border-2 border-transparent focus:border-blue-500 outline-none" placeholder="••••" />
+                                            <button onClick={handleLogin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl">Unlock Admin</button>
+                                            <button onClick={() => setShowAdminLogin(false)} className="w-full mt-4 text-slate-400 text-xs font-bold uppercase">Cancel</button>
                                         </div>
                                     </div>
                                 )}
 
+                                {/* New PO Modal */}
                                 {isPoModalOpen && (
                                     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-                                        <form onSubmit={handleAddPo} className="bg-white rounded-[32px] p-8 w-full max-w-md space-y-4">
-                                            <h3 className="text-xl font-bold">New Purchase Order</h3>
-                                            <input required placeholder="PO Number" value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required placeholder="Vendor" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required type="number" placeholder="Amount" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <button className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">Save PO</button>
-                                            <button type="button" onClick={() => setIsPoModalOpen(false)} className="w-full text-slate-400 text-sm">Cancel</button>
+                                        <form onSubmit={handleAddPo} className="bg-white rounded-[32px] p-8 w-full max-w-md space-y-4 shadow-2xl">
+                                            <h3 className="text-xl font-bold text-slate-800">Log Purchase Order</h3>
+                                            <input required placeholder="PO Number" value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <input required placeholder="Vendor Name" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <input required type="number" placeholder="Total Amount" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <button className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">Register PO</button>
+                                            <button type="button" onClick={() => setIsPoModalOpen(false)} className="w-full text-slate-400 text-xs">Close</button>
                                         </form>
                                     </div>
                                 )}
 
+                                {/* New APV Modal */}
                                 {isApvModalOpen && (
                                     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-                                        <form onSubmit={handleAddApv} className="bg-white rounded-[32px] p-8 w-full max-w-md space-y-4">
-                                            <h3 className="text-xl font-bold">New APV Record</h3>
-                                            <input required placeholder="APV Number" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required placeholder="PO Reference" value={newApv.poId} onChange={e => setNewApv({...newApv, poId: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required placeholder="Vendor" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required type="number" placeholder="Amount" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <input required type="date" value={newApv.dueDate} onChange={e => setNewApv({...newApv, dueDate: e.target.value})} className="w-full p-3 border rounded-xl" />
-                                            <button className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold">Save APV</button>
-                                            <button type="button" onClick={() => setIsApvModalOpen(false)} className="w-full text-slate-400 text-sm">Cancel</button>
+                                        <form onSubmit={handleAddApv} className="bg-white rounded-[32px] p-8 w-full max-w-md space-y-4 shadow-2xl">
+                                            <h3 className="text-xl font-bold text-slate-800">Create APV Record</h3>
+                                            <input required placeholder="APV Reference" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <input required placeholder="Vendor" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <input required type="number" placeholder="Invoiced Amount" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full p-3 bg-slate-50 border-none rounded-xl" />
+                                            <button className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold shadow-lg">Save Record</button>
+                                            <button type="button" onClick={() => setIsApvModalOpen(false)} className="w-full text-slate-400 text-xs">Close</button>
                                         </form>
                                     </div>
                                 )}
                             </main>
                         </div>
                     );
-
-                    function handleLogin(e) {
-                        e.preventDefault();
-                        if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); }
-                        else alert("Wrong passcode");
-                    }
                 }
 
-                ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+                // Final safety render
+                const root = ReactDOM.createRoot(document.getElementById('root'));
+                root.render(<App />);
+
             } catch (err) {
-                document.getElementById('root').innerHTML = `<div style="color:red; padding:20px;">Startup Error: ${err.message}</div>`;
+                console.error("Critical Failure:", err);
+                document.getElementById('root').innerHTML = `
+                    <div style="height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; background:#fff1f2;">
+                        <h2 style="color:#e11d48; margin-bottom:10px;">Syntax/Runtime Error</h2>
+                        <p style="font-size:12px; color:#9f1239;">${err.message}</p>
+                        <button onclick="location.reload()" style="margin-top:20px; padding:10px 20px; background:#e11d48; color:#fff; border:none; border-radius:8px;">Refresh Page</button>
+                    </div>
+                `;
             }
         })();
     </script>
