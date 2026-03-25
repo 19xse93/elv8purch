@@ -377,6 +377,39 @@
                 setIsPayApvModalOpen(false); setSelectedApvToPay(null); setSettleDate('');
             };
 
+            const openEditPo = (po) => { 
+                setEditingPoId(po.id); 
+                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', receivedDate: po.receivedDate || '', amount: po.amount.toString() }); 
+                setIsPoModalOpen(true); 
+            };
+
+            const openEditApv = (apv) => { 
+                setEditingApvId(apv.id); 
+                setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0] }); 
+                setIsApvModalOpen(true); 
+            };
+
+            const openReceiveModal = (po) => { 
+                setSelectedPo(po); 
+                setReceiveDate(TODAY.toISOString().split('T')[0]); 
+                setIsReceiveModalOpen(true); 
+            };
+
+            const draftPaymentNotification = async (apv) => {
+                setSelectedVendor(apv.vendor); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully settled on ${apv.settledDate || 'the requested date'}. Keep it polite, professional, and under 100 words. Do not include a subject line.`;
+                const result = await callGeminiAPI(prompt);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
+
+            const draftVendorEmail = async (vendorData) => {
+                setSelectedVendor(vendorData.name); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
+                const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body.`;
+                const result = await callGeminiAPI(prompt);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
+
             const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
@@ -544,7 +577,19 @@
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => (
-                            <tr key={po.id} className="hover:bg-gray-50 transition-colors"><td className="p-4"><div className="font-bold text-blue-600">{po.id}</div><div className="text-[10px] text-gray-400 uppercase font-black">{po.businessUnit}</div><div className="text-[10px] text-gray-500">PR Date: {po.prReceivedDate}</div></td><td className="p-4 font-medium text-gray-900">{po.vendor}</td><td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td><td className="p-4 text-right font-bold">{formatCurrency(po.amount)}</td>{isAdmin && <td className="p-4 text-center"><button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button></td>}</tr>
+                            <tr key={po.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="p-4"><div className="font-bold text-blue-600">{po.id}</div><div className="text-[10px] text-gray-400 uppercase font-black">{po.businessUnit}</div><div className="text-[10px] text-gray-500">PR Date: {po.prReceivedDate}</div></td>
+                                <td className="p-4 font-medium text-gray-900">{po.vendor}</td>
+                                <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
+                                <td className="p-4 text-right font-bold">{formatCurrency(po.amount)}</td>
+                                {isAdmin && (
+                                    <td className="p-4 text-center space-x-2 whitespace-nowrap">
+                                        <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
+                                        {!po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
+                                        <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>
+                                    </td>
+                                )}
+                            </tr>
                         ))}</tbody>
                     </table></div>
                 </div>
@@ -557,7 +602,25 @@
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & PO</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredApvs.map(apv => {
                             const aging = getAgingCategory(apv.dueDate, apv.status);
-                            return (<tr key={apv.id} className="hover:bg-gray-50 transition-colors"><td className="p-4 font-bold text-gray-900">{apv.id}</td><td className="p-4"><div className="font-medium">{apv.vendor}</div><div className="text-[10px] text-blue-500">{apv.poId}</div></td><td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td><td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>{isAdmin && <td className="p-4 text-center space-x-2">{apv.status === 'Unpaid' ? <button onClick={() => openPayModal(apv)} className={`px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 text-white`}>Pay</button> : <span className="text-emerald-500"><CheckCircle size={16}/></span>}</td>}</tr>);
+                            return (
+                                <tr key={apv.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="p-4 font-bold text-gray-900">{apv.id}</td>
+                                    <td className="p-4"><div className="font-medium">{apv.vendor}</div><div className="text-[10px] text-blue-500">{apv.poId}</div></td>
+                                    <td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td>
+                                    <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>
+                                    {isAdmin && (
+                                        <td className="p-4 text-center space-x-2 whitespace-nowrap">
+                                            <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
+                                            {apv.status === 'Unpaid' ? (
+                                                <button onClick={() => openPayModal(apv)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 transition-colors text-white">Pay</button>
+                                            ) : (
+                                                <button onClick={() => draftPaymentNotification(apv)} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-bold transition-colors">Notify</button>
+                                            )}
+                                            <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>
+                                        </td>
+                                    )}
+                                </tr>
+                            );
                         })}</tbody>
                     </table></div>
                 </div>
@@ -706,10 +769,10 @@
                     {isApvModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 flex flex-col">
-                                <div className="flex justify-between items-center mb-6"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tighter">Register New APV</h3><button onClick={() => setIsApvModalOpen(false)} className="text-gray-400"><X size={20}/></button></div>
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tighter">{editingApvId ? 'Edit APV Record' : 'Register New APV'}</h3><button onClick={() => setIsApvModalOpen(false)} className="text-gray-400"><X size={20}/></button></div>
                                 <form onSubmit={handleAddApv} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">APV Number</label><input required value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">APV Number</label><input required readOnly={!!editingApvId} value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingApvId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => {
                                             const val = e.target.value;
                                             const matched = purchases.find(p => p.id === val);
@@ -734,10 +797,10 @@
                     {isPoModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 flex flex-col">
-                                <div className="flex justify-between items-center mb-6"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tighter">New Purchase Order</h3><button onClick={() => setIsPoModalOpen(false)} className="text-gray-400"><X size={20}/></button></div>
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tighter">{editingPoId ? 'Edit Purchase Order' : 'New Purchase Order'}</h3><button onClick={() => setIsPoModalOpen(false)} className="text-gray-400"><X size={20}/></button></div>
                                 <form onSubmit={handleAddPo} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Number</label><input required value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Number</label><input required readOnly={!!editingPoId} value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingPoId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -748,7 +811,14 @@
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Expected Delivery</label><input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Business Unit</label><select value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
                                     </div>
-                                    <div><label className="text-[10px] uppercase font-bold text-gray-500">Amount (₱)</label><input required type="number" step="0.01" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Amount (₱)</label><input required type="number" step="0.01" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Actual Received Date <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><input type="date" value={newPo.receivedDate || ''} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Processor</label><input required type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="e.g., Alex Reyes" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Brief description" /></div>
+                                    </div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Save PO</button></div>
                                 </form>
                             </div>
@@ -765,6 +835,29 @@
                                     <div><label className="block text-xs font-medium text-gray-700 mb-1">Date Settled</label><input required type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" /></div>
                                     <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsPayApvModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {isReceiveModalOpen && selectedPo && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 text-sm md:text-base">Mark PO as Received</h3><button onClick={() => setIsReceiveModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
+                                <form onSubmit={handleReceivePo} className="p-4 md:p-6 space-y-4">
+                                    <div className="text-sm text-gray-600 mb-4">Confirming receipt for <strong>{selectedPo.id}</strong> from {selectedPo.vendor}.</div>
+                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Date Received</label><input required type="date" value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsReceiveModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {emailModalOpen && (
+                        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                            <div className="bg-white rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                                <div className="flex justify-between items-center mb-6 shrink-0"><h3 className="text-lg md:text-2xl font-black tracking-tight text-slate-800 flex items-center"><Mail size={24} className="mr-3 text-indigo-600" /> Draft Email</h3><button type="button" onClick={() => setEmailModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full"><X size={18}/></button></div>
+                                <div className="flex-1 overflow-y-auto mb-6 bg-slate-50 rounded-2xl p-6 border border-slate-100">{isDraftingEmail ? (<div className="flex flex-col items-center justify-center py-12 text-indigo-600"><Loader2 size={32} className="animate-spin mb-4" /><p className="font-bold uppercase tracking-widest text-xs">Writing email...</p></div>) : (<div className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed">{currentEmailDraft}</div>)}</div>
+                                <div className="flex gap-3 md:gap-4 shrink-0"><button onClick={() => setEmailModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase text-[10px] md:text-xs tracking-widest transition-all hover:bg-slate-200">Close</button><button disabled={isDraftingEmail} onClick={handleCopy} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-bold uppercase text-[10px] md:text-xs tracking-widest shadow-xl shadow-indigo-200 transition-all hover:bg-indigo-700 flex justify-center items-center">{copySuccess ? <Check size={16} className="mr-2" /> : <Copy size={16} className="mr-2" />}{copySuccess ? 'Copied!' : 'Copy Text'}</button></div>
                             </div>
                         </div>
                     )}
