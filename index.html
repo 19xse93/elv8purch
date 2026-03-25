@@ -1,1060 +1,1644 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProcureMonitor | Elev8</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+import React, { useState, useMemo, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { 
+  LayoutDashboard, 
+  ShoppingCart, 
+  FileText, 
+  AlertCircle, 
+  Clock, 
+  CheckCircle,
+  TrendingUp,
+  DollarSign,
+  Calendar,
+  Building,
+  Sparkles,
+  Mail,
+  Loader2,
+  X,
+  Copy,
+  Check,
+  Truck,
+  CalendarDays,
+  Lock,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Activity,
+  Unlock,
+  User,
+  Wallet,
+  Send,
+  Edit3,
+  Menu
+} from 'lucide-react';
+
+// --- Firebase Initialization ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- Mock Data (Used for initial seeding) ---
+const TODAY = new Date('2026-03-24T00:00:00'); // Fixed to current environment date for consistent aging
+
+const INITIAL_PURCHASES = [
+  { id: 'PO-2026-001', processorName: 'Alex Reyes', prReceivedDate: '2026-02-25', date: '2026-03-01', expectedDelivery: '2026-03-10', receivedDate: '2026-03-09', vendor: 'TechCorp Supplies', description: 'Engineering Laptops', amount: 150000, status: 'Invoiced' },
+  { id: 'PO-2026-002', processorName: 'Maria Santos', prReceivedDate: '2026-02-10', date: '2026-02-15', expectedDelivery: '2026-02-25', receivedDate: '2026-02-26', vendor: 'OfficeWorld', description: 'Ergonomic Chairs', amount: 25000, status: 'Invoiced' },
+  { id: 'PO-2026-003', processorName: 'Juan Dela Cruz', prReceivedDate: '2026-03-15', date: '2026-03-20', expectedDelivery: '2026-04-05', receivedDate: null, vendor: 'Global Logistics', description: 'Q1 Shipping Retainer', amount: 8000, status: 'Pending' },
+  { id: 'PO-2026-004', processorName: 'Alex Reyes', prReceivedDate: '2025-12-28', date: '2026-01-05', expectedDelivery: '2026-01-20', receivedDate: '2026-01-18', vendor: 'OfficeWorld', description: 'Desks & Cabinets', amount: 45000, status: 'Invoiced' },
+  { id: 'PO-2025-099', processorName: 'Maria Santos', prReceivedDate: '2025-11-05', date: '2025-11-10', expectedDelivery: '2025-11-20', receivedDate: '2025-11-20', vendor: 'Global Logistics', description: 'Q4 Shipping Overage', amount: 18000, status: 'Invoiced' },
+  { id: 'PO-2025-085', processorName: 'Juan Dela Cruz', prReceivedDate: '2025-09-30', date: '2025-10-05', expectedDelivery: '2025-10-15', receivedDate: '2025-10-14', vendor: 'TechCorp Supplies', description: 'Server Racks', amount: 145000, status: 'Invoiced' },
+  { id: 'PO-2025-120', processorName: 'Alex Reyes', prReceivedDate: '2025-12-10', date: '2025-12-15', expectedDelivery: '2025-12-30', receivedDate: '2025-12-28', vendor: 'PrintCo', description: 'Marketing Materials', amount: 31000, status: 'Invoiced' },
+  { id: 'PO-2026-005', processorName: 'Maria Santos', prReceivedDate: '2026-03-08', date: '2026-03-10', expectedDelivery: '2026-03-15', receivedDate: null, vendor: 'TechCorp Supplies', description: 'Office Monitors', amount: 55000, status: 'Pending' }, 
+];
+
+const INITIAL_APVS = [
+  { id: 'APV-26-001', poId: 'PO-2026-001', vendor: 'TechCorp Supplies', invoiceDate: '2026-03-05', dueDate: '2026-04-04', amount: 150000, status: 'Unpaid', funded: true, settledDate: null }, 
+  { id: 'APV-26-002', poId: 'PO-2026-002', vendor: 'OfficeWorld', invoiceDate: '2026-02-16', dueDate: '2026-03-18', amount: 25000, status: 'Unpaid', funded: false, settledDate: null }, 
+  { id: 'APV-26-005', poId: 'PO-2026-004', vendor: 'OfficeWorld', invoiceDate: '2026-01-10', dueDate: '2026-02-09', amount: 45000, status: 'Unpaid', funded: false, settledDate: null }, 
+  { id: 'APV-25-120', poId: 'PO-2025-120', vendor: 'PrintCo', invoiceDate: '2025-12-20', dueDate: '2026-01-19', amount: 31000, status: 'Unpaid', funded: false, settledDate: null }, 
+  { id: 'APV-25-099', poId: 'PO-2025-099', vendor: 'Global Logistics', invoiceDate: '2025-11-15', dueDate: '2025-12-15', amount: 18000, status: 'Unpaid', funded: false, settledDate: null }, 
+  { id: 'APV-25-085', poId: 'PO-2025-085', vendor: 'TechCorp Supplies', invoiceDate: '2025-10-10', dueDate: '2025-11-09', amount: 145000, status: 'Unpaid', funded: false, settledDate: null }, 
+];
+
+// --- Gemini API Helper ---
+const callGeminiAPI = async (prompt) => {
+  const apiKey = "";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] }
+  };
+
+  let retries = 5;
+  let delay = 1000;
+
+  while (retries > 0) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+    } catch (error) {
+      retries--;
+      if (retries === 0) return "Failed to generate AI content after multiple attempts. Please try again later.";
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+};
+
+// --- Helper Functions ---
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+};
+
+const getAgingCategory = (dueDate, status) => {
+  if (status === 'Paid') return 'Paid';
+  const due = new Date(dueDate);
+  const diffTime = TODAY - due;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return 'Current';
+  if (diffDays <= 30) return '1-30 Days';
+  if (diffDays <= 60) return '31-60 Days';
+  if (diffDays <= 90) return '61-90 Days';
+  return '> 90 Days';
+};
+
+const getAgingColor = (category) => {
+  switch (category) {
+    case 'Current': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case '1-30 Days': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case '31-60 Days': return 'bg-orange-100 text-orange-800 border-orange-200';
+    case '61-90 Days': return 'bg-red-100 text-red-800 border-red-200';
+    case '> 90 Days': return 'bg-rose-600 text-white border-rose-700';
+    case 'Paid': return 'bg-gray-100 text-gray-600 border-gray-200';
+    default: return 'bg-gray-100 text-gray-800';
+  }
+};
+
+const getAgingBgColor = (category) => {
+  switch (category) {
+    case 'Current': return 'bg-emerald-500';
+    case '1-30 Days': return 'bg-yellow-400';
+    case '31-60 Days': return 'bg-orange-500';
+    case '61-90 Days': return 'bg-red-500';
+    case '> 90 Days': return 'bg-rose-700';
+    default: return 'bg-gray-300';
+  }
+};
+
+const getDaysDiff = (startStr, endStr) => {
+  if (!startStr || !endStr) return null;
+  const s = new Date(startStr);
+  const e = new Date(endStr);
+  s.setHours(0,0,0,0);
+  e.setHours(0,0,0,0);
+  return Math.round((e - s) / (1000 * 60 * 60 * 24));
+};
+
+const getDeliveryStatus = (expectedDelivery, receivedDate) => {
+  if (receivedDate) {
+     const expected = new Date(expectedDelivery);
+     const received = new Date(receivedDate);
+     return received <= expected 
+       ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } 
+       : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+  }
+  
+  const expected = new Date(expectedDelivery);
+  const diffTime = Math.ceil((TODAY - expected) / (1000 * 60 * 60 * 24));
+  
+  if (diffTime > 0) {
+    return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
+  }
+  return { label: 'Pending Delivery', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // App States
+  const [user, setUser] = useState(null);
+  const [purchases, setPurchases] = useState([]);
+  const [apvs, setApvs] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+
+  // Admin & Security States
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState(false);
+
+  // AI States
+  const [insights, setInsights] = useState(null);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [currentEmailDraft, setCurrentEmailDraft] = useState('');
+  const [isDraftingEmail, setIsDraftingEmail] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Form States for Editing & Monitoring
+  const [isPoModalOpen, setIsPoModalOpen] = useState(false);
+  const [isApvModalOpen, setIsApvModalOpen] = useState(false);
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [selectedPo, setSelectedPo] = useState(null);
+  const [editingPoId, setEditingPoId] = useState(null);
+  
+  const [newPo, setNewPo] = useState({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
+  const [newApv, setNewApv] = useState({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
+  const [editingApvId, setEditingApvId] = useState(null);
+  const [receiveDate, setReceiveDate] = useState('');
+
+  // Payment Settlement States
+  const [isPayApvModalOpen, setIsPayApvModalOpen] = useState(false);
+  const [selectedApvToPay, setSelectedApvToPay] = useState(null);
+  const [settleDate, setSettleDate] = useState('');
+
+  // Treasury States
+  const [weeklyFund, setWeeklyFund] = useState(5000000);
+  const [isFundModalOpen, setIsFundModalOpen] = useState(false);
+  const [editFundAmount, setEditFundAmount] = useState('');
+
+  // --- Firebase Authentication & Data Fetching ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Authentication failed:", error);
+      }
+    };
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Shared Public Paths for Viewer/Editor Model
+    const purchasesRef = collection(db, 'artifacts', appId, 'public', 'data', 'purchases');
+    const apvsRef = collection(db, 'artifacts', appId, 'public', 'data', 'apvs');
+    const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
+
+    const unsubSettings = onSnapshot(doc(settingsRef, 'treasury'), (docSnap) => {
+      if (docSnap.exists()) {
+        setWeeklyFund(docSnap.data().amount);
+      } else {
+        setDoc(doc(settingsRef, 'treasury'), { amount: 5000000 });
+      }
+    }, (error) => console.error("Error fetching settings:", error));
+
+    const unsubPurchases = onSnapshot(purchasesRef, (snapshot) => {
+      if (snapshot.empty) {
+        INITIAL_PURCHASES.forEach(p => setDoc(doc(purchasesRef, p.id), p));
+      } else {
+        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
+      }
+    }, (error) => console.error("Error fetching purchases:", error));
+
+    const unsubApvs = onSnapshot(apvsRef, (snapshot) => {
+      if (snapshot.empty) {
+        INITIAL_APVS.forEach(a => setDoc(doc(apvsRef, a.id), a));
+      } else {
+        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
+      }
+      setIsDataLoading(false);
+    }, (error) => console.error("Error fetching APVs:", error));
+
+    return () => {
+      unsubPurchases();
+      unsubApvs();
+      unsubSettings();
+    };
+  }, [user]);
+
+
+  // --- Calculations ---
+  const { totalPurchases, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, vendorDeliveryRates, totalFundedUnpaid, totalReleasedThisWeek, weeklyNeedToPay, endOfWeek } = useMemo(() => {
+    let tPurchases = purchases.reduce((sum, p) => sum + p.amount, 0);
+    let pDeliveries = purchases.filter(p => !p.receivedDate).length;
+    let tOutstanding = 0;
     
-    <!-- FIX: Mask injected module loaders (like Vercel Toolbar) that break standard UMD scripts -->
-    <script>
-        window.__define = window.define;
-        window.__exports = window.exports;
-        window.__module = window.module;
-        window.define = undefined;
-        window.exports = undefined;
-        window.module = undefined;
-    </script>
-
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Lucide Icons UMD -->
-    <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.min.js"></script>
-
-    <!-- Restore module loaders -->
-    <script>
-        window.define = window.__define;
-        window.exports = window.__exports;
-        window.module = window.__module;
-    </script>
-
-    <!-- Babel & Firebase -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    // Treasury Logic
+    let tFundedUnpaid = 0;
+    let tReleasedThisWeek = 0;
+    const startOfWeek = new Date(TODAY);
+    startOfWeek.setDate(TODAY.getDate() - TODAY.getDay()); // Start of week (Sunday)
+    startOfWeek.setHours(0,0,0,0);
     
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; }
-        .animate-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white;}
-    </style>
-</head>
-<body>
-    <div id="root">
-        <div style="text-align: center; color: #64748b; font-family: sans-serif; padding-top: 40vh;">
-            <svg class="animate-spin h-10 w-10 mx-auto mb-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p style="font-weight: 700; letter-spacing: 0.1em;">INITIALIZING PROCUREMONITOR...</p>
+    const endOfCurrentWeek = new Date(startOfWeek);
+    endOfCurrentWeek.setDate(startOfWeek.getDate() + 6); // End of week (Saturday)
+    endOfCurrentWeek.setHours(23, 59, 59, 999);
+
+    // Timeline Metrics
+    let totalProcessingDays = 0;
+    let processedCount = 0;
+    let onTimeCount = 0;
+    let receivedCount = 0;
+    
+    const vDelivery = {};
+
+    purchases.forEach(p => {
+      // PR to PO Processing Time
+      if (p.prReceivedDate && p.date) {
+        const diff = getDaysDiff(p.prReceivedDate, p.date);
+        if (diff !== null && diff >= 0) {
+          totalProcessingDays += diff;
+          processedCount++;
+        }
+      }
+
+      if (!vDelivery[p.vendor]) vDelivery[p.vendor] = { name: p.vendor, totalOrders: 0, onTime: 0 };
+
+      // On-Time Delivery Calculation
+      if (p.receivedDate && p.expectedDelivery) {
+        receivedCount++;
+        vDelivery[p.vendor].totalOrders++;
+        const diff = getDaysDiff(p.expectedDelivery, p.receivedDate);
+        if (diff !== null && diff <= 0) {
+          onTimeCount++; // Delivered on or before expected date
+          vDelivery[p.vendor].onTime++;
+        }
+      }
+    });
+
+    const summary = {
+      'Current': 0,
+      '1-30 Days': 0,
+      '31-60 Days': 0,
+      '61-90 Days': 0,
+      '> 90 Days': 0
+    };
+
+    const weeklyNeed = {
+      'Current': 0,
+      '1-30 Days': 0,
+      '31-60 Days': 0,
+      '61-90 Days': 0,
+      '> 90 Days': 0,
+      total: 0
+    };
+
+    const vAging = {};
+
+    apvs.forEach(apv => {
+      if (apv.status === 'Unpaid') {
+        tOutstanding += apv.amount;
+        if (apv.funded) {
+          tFundedUnpaid += apv.amount;
+        }
+
+        const category = getAgingCategory(apv.dueDate, apv.status);
+        if (summary[category] !== undefined) {
+          summary[category] += apv.amount;
+        }
+        
+        // Check if APV needs to be paid this week
+        const dueDateObj = new Date(apv.dueDate);
+        if (dueDateObj <= endOfCurrentWeek) {
+          if (weeklyNeed[category] !== undefined) {
+            weeklyNeed[category] += apv.amount;
+          }
+          weeklyNeed.total += apv.amount;
+        }
+
+        // Group by Vendor for Aging Report
+        if (!vAging[apv.vendor]) {
+          vAging[apv.vendor] = { name: apv.vendor, total: 0, 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0 };
+        }
+        vAging[apv.vendor].total += apv.amount;
+        vAging[apv.vendor][category] += apv.amount;
+      } else if (apv.status === 'Paid' && apv.settledDate) {
+        const settled = new Date(apv.settledDate);
+        if (settled >= startOfWeek) {
+          tReleasedThisWeek += apv.amount;
+        }
+      }
+    });
+
+    return { 
+      totalPurchases: tPurchases, 
+      pendingDeliveriesCount: pDeliveries,
+      totalOutstanding: tOutstanding, 
+      agingSummary: summary,
+      vendorAging: Object.values(vAging).sort((a, b) => b.total - a.total),
+      avgProcessingTime: processedCount > 0 ? (totalProcessingDays / processedCount).toFixed(1) : 0,
+      onTimeRate: receivedCount > 0 ? ((onTimeCount / receivedCount) * 100).toFixed(0) : 0,
+      vendorDeliveryRates: Object.values(vDelivery).map(v => ({
+        ...v,
+        onTimeRate: v.totalOrders > 0 ? ((v.onTime / v.totalOrders) * 100).toFixed(0) : 0
+      })).sort((a, b) => b.totalOrders - a.totalOrders),
+      totalFundedUnpaid: tFundedUnpaid,
+      totalReleasedThisWeek: tReleasedThisWeek,
+      weeklyNeedToPay: weeklyNeed,
+      endOfWeek: endOfCurrentWeek
+    };
+  }, [purchases, apvs, weeklyFund]);
+
+  const toggleFunded = async (apv) => {
+    if (!user || !isAdmin) return;
+    try {
+      const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', apv.id);
+      await updateDoc(apvRef, { funded: !apv.funded });
+    } catch (error) {
+      console.error("Error toggling funded status:", error);
+    }
+  };
+
+  const openPayModal = (apv) => {
+    setSelectedApvToPay(apv);
+    setSettleDate(TODAY.toISOString().split('T')[0]);
+    setIsPayApvModalOpen(true);
+  };
+
+  const handlePayApv = async (e) => {
+    e.preventDefault();
+    if (!user || !isAdmin || !selectedApvToPay) return;
+    try {
+      const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', selectedApvToPay.id);
+      await updateDoc(apvRef, { status: 'Paid', settledDate: settleDate });
+      setIsPayApvModalOpen(false);
+      setSelectedApvToPay(null);
+      setSettleDate('');
+    } catch (error) {
+      console.error("Error updating status to Paid:", error);
+    }
+  };
+
+  const handleUpdateFund = async (e) => {
+    e.preventDefault();
+    if (!user || !isAdmin) return;
+    try {
+      const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'treasury');
+      await setDoc(settingsRef, { amount: Number(editFundAmount) });
+      setIsFundModalOpen(false);
+    } catch (error) {
+      console.error("Error updating treasury fund:", error);
+    }
+  };
+
+  // --- Data Entry Actions ---
+  const openAddPo = () => {
+    setEditingPoId(null);
+    setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
+    setIsPoModalOpen(true);
+  };
+
+  const openEditPo = (po) => {
+    setEditingPoId(po.id);
+    setNewPo({ ...po, receivedDate: po.receivedDate || '', amount: po.amount.toString() });
+    setIsPoModalOpen(true);
+  };
+
+  const handleAddPo = async (e) => {
+    e.preventDefault();
+    if (!user || !isAdmin) return;
+    try {
+      const poRef = doc(db, 'artifacts', appId, 'public', 'data', 'purchases', newPo.id);
+      const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
+      
+      await setDoc(poRef, { 
+        ...newPo, 
+        amount: Number(newPo.amount), 
+        status: poStatus, 
+        receivedDate: newPo.receivedDate || null 
+      });
+      setIsPoModalOpen(false);
+      setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
+      setEditingPoId(null);
+    } catch (error) {
+      console.error("Error adding PO:", error);
+    }
+  };
+
+  const openAddApv = () => {
+    setEditingApvId(null);
+    setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid' });
+    setIsApvModalOpen(true);
+  };
+
+  const openEditApv = (apv) => {
+    setEditingApvId(apv.id);
+    setNewApv({ 
+      ...apv, 
+      amount: apv.amount.toString(),
+      paymentTerms: apv.paymentTerms || 'Terms',
+      status: apv.status || 'Unpaid',
+      settledDate: apv.settledDate || TODAY.toISOString().split('T')[0]
+    });
+    setIsApvModalOpen(true);
+  };
+
+  const handleAddApv = async (e) => {
+    e.preventDefault();
+    if (!user || !isAdmin) return;
+    try {
+      const isPaid = newApv.status === 'Paid';
+      const apvRef = doc(db, 'artifacts', appId, 'public', 'data', 'apvs', newApv.id);
+      await setDoc(apvRef, { 
+        ...newApv, 
+        amount: Number(newApv.amount), 
+        status: newApv.status, 
+        // If marked as Paid immediately (like COD), treat as funded
+        funded: isPaid ? true : (editingApvId ? (apvs.find(a => a.id === editingApvId)?.funded || false) : false),
+        settledDate: isPaid ? newApv.settledDate : null
+      });
+      setIsApvModalOpen(false);
+      setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
+      setEditingApvId(null);
+    } catch (error) {
+      console.error("Error adding APV:", error);
+    }
+  };
+
+  const handleReceivePo = async (e) => {
+    e.preventDefault();
+    if (!user || !selectedPo || !isAdmin) return;
+    try {
+      const poRef = doc(db, 'artifacts', appId, 'public', 'data', 'purchases', selectedPo.id);
+      await updateDoc(poRef, { 
+        receivedDate: receiveDate, 
+        status: 'Invoiced' 
+      });
+      setIsReceiveModalOpen(false);
+      setSelectedPo(null);
+      setReceiveDate('');
+    } catch (error) {
+      console.error("Error receiving PO:", error);
+    }
+  };
+
+  const openReceiveModal = (po) => {
+    setSelectedPo(po);
+    setReceiveDate(TODAY.toISOString().split('T')[0]); // Default to today
+    setIsReceiveModalOpen(true);
+  };
+
+  const handleDeletePo = async (id) => {
+    if (!user || !isAdmin) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'purchases', id));
+    } catch (error) {
+      console.error("Error deleting PO:", error);
+    }
+  };
+
+  const handleDeleteApv = async (id) => {
+    if (!user || !isAdmin) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apvs', id));
+    } catch (error) {
+      console.error("Error deleting APV:", error);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (!user || !isAdmin) return;
+    setIsClearing(true);
+    try {
+      for (const po of purchases) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'purchases', po.id));
+      }
+      for (const apv of apvs) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apvs', apv.id));
+      }
+    } catch (error) {
+      console.error("Error clearing data:", error);
+    }
+    setIsClearing(false);
+    setIsClearModalOpen(false);
+  };
+
+  // --- AI Actions ---
+  const generateInsights = async () => {
+    setIsGeneratingInsights(true);
+    const dataSummary = `
+      Total Outstanding: ${formatCurrency(totalOutstanding)}
+      Current: ${formatCurrency(agingSummary['Current'])}
+      1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}
+      31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}
+      61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}
+      Over 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}
+    `;
+    
+    const prompt = `Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight. Highlight any risks with older payables and suggest a quick strategy. Do not use formatting like bolding or asterisks.`;
+    
+    const result = await callGeminiAPI(prompt);
+    setInsights(result);
+    setIsGeneratingInsights(false);
+  };
+
+  const draftVendorEmail = async (vendorData) => {
+    setSelectedVendor(vendorData.name);
+    setEmailModalOpen(true);
+    setIsDraftingEmail(true);
+    setCurrentEmailDraft('');
+    setCopySuccess(false);
+
+    const vendorSummary = `
+      Vendor: ${vendorData.name}
+      Total Due: ${formatCurrency(vendorData.total)}
+      Current: ${formatCurrency(vendorData['Current'])}
+      1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}
+      31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}
+      61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}
+      Over 90 Days: ${formatCurrency(vendorData['> 90 Days'])}
+    `;
+
+    const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.
+    Here is the aging breakdown: \n${vendorSummary}\n
+    Acknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body.`;
+
+    const result = await callGeminiAPI(prompt);
+    setCurrentEmailDraft(result);
+    setIsDraftingEmail(false);
+  };
+
+  const draftPaymentNotification = async (apv) => {
+    setSelectedVendor(apv.vendor);
+    setEmailModalOpen(true);
+    setIsDraftingEmail(true);
+    setCurrentEmailDraft('');
+    setCopySuccess(false);
+
+    const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully funded by our Treasury and settled on ${apv.settledDate}. Keep it polite, professional, and under 100 words. Do not include a subject line.`;
+
+    const result = await callGeminiAPI(prompt);
+    setCurrentEmailDraft(result);
+    setIsDraftingEmail(false);
+  };
+
+  const handleCopy = () => {
+    const textArea = document.createElement("textarea");
+    textArea.value = currentEmailDraft;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Copy failed', err);
+    }
+    document.body.removeChild(textArea);
+  };
+
+  const handleAdminLoginSubmit = (e) => {
+    e.preventDefault();
+    if (adminPassword === 'admin123') {
+      setIsAdmin(true);
+      setShowAdminLogin(false);
+      setAdminPassword('');
+      setAdminError(false);
+    } else {
+      setAdminError(true);
+    }
+  };
+
+  const handleTabSwitch = (tab) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
+
+  if (isDataLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 flex-col px-4 text-center">
+        <Loader2 size={48} className="animate-spin text-blue-600 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-800">Initializing Private Desk Mode...</h2>
+        <p className="text-gray-500 text-sm mt-2 flex items-center justify-center">
+          <Lock size={14} className="mr-1" /> Securing your personalized data
+        </p>
+      </div>
+    );
+  }
+
+  // --- Render Sections ---
+  const renderDashboard = () => (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
+      
+      {/* LEFT COLUMN: Timeline Report (Prioritized) */}
+      <div className="space-y-4 md:space-y-6">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+          <Activity className="mr-2 text-indigo-500" size={20} /> Procurement Timeline
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+          <div className="p-4 md:p-5 rounded-xl bg-blue-50 border border-blue-100 flex items-center space-x-3 md:space-x-4">
+            <div className="p-2 md:p-3 bg-blue-100 rounded-lg text-blue-600"><FileText size={20} className="md:w-6 md:h-6" /></div>
+            <div>
+              <div className="text-xs text-blue-600 font-medium">Avg PR-to-PO</div>
+              <div className="text-lg md:text-xl font-bold text-blue-900">{avgProcessingTime} <span className="text-xs md:text-sm font-normal text-blue-700">Days</span></div>
+            </div>
+          </div>
+          <div className="p-4 md:p-5 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center space-x-3 md:space-x-4">
+            <div className="p-2 md:p-3 bg-emerald-100 rounded-lg text-emerald-600"><CheckCircle size={20} className="md:w-6 md:h-6" /></div>
+            <div>
+              <div className="text-xs text-emerald-600 font-medium">On-Time Delivery</div>
+              <div className="text-lg md:text-xl font-bold text-emerald-900">{onTimeRate}%</div>
+            </div>
+          </div>
         </div>
+
+        {/* Compact Timeline Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <table className="w-full text-left border-collapse min-w-[500px]">
+              <thead className="sticky top-0 bg-gray-50 z-10">
+                <tr className="border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500">
+                  <th className="p-3 font-semibold">PO Info</th>
+                  <th className="p-3 font-semibold border-l border-gray-200">Processing</th>
+                  <th className="p-3 font-semibold border-l border-gray-200">Delivery</th>
+                  <th className="p-3 font-semibold text-center border-l border-gray-200">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {purchases.length === 0 ? (
+                  <tr><td colSpan="4" className="p-4 text-center text-sm text-gray-500">No data available.</td></tr>
+                ) : purchases.map((po) => {
+                  const processingDays = getDaysDiff(po.prReceivedDate, po.date);
+                  const deliveryVariance = getDaysDiff(po.expectedDelivery, po.receivedDate);
+                  const status = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
+
+                  return (
+                    <tr key={po.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="p-3">
+                        <div className="font-medium text-xs text-gray-900">{po.id}</div>
+                        <div className="text-[10px] text-gray-500 truncate max-w-[100px]">{po.vendor}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5 flex items-center" title="Purchasing Processor"><User size={10} className="mr-1"/> {po.processorName || 'Unassigned'}</div>
+                      </td>
+                      <td className="p-3 border-l border-gray-100">
+                        <div className="text-[10px] text-gray-500 mb-1">
+                          PR: <strong className="text-gray-900">{po.prReceivedDate || 'N/A'}</strong><br/>
+                          PO: <strong className="text-gray-900">{po.date}</strong>
+                        </div>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${processingDays !== null && processingDays > 5 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {processingDays !== null ? `${processingDays}d turnaround` : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="p-3 border-l border-gray-100">
+                        <div className="text-[10px] text-gray-500 mb-1">
+                          Exp: <strong className="text-gray-900">{po.expectedDelivery}</strong><br/>
+                          Rcv: <strong className={po.receivedDate ? 'text-gray-900' : 'text-gray-400 italic'}>{po.receivedDate || 'Pending'}</strong>
+                        </div>
+                        {po.receivedDate ? (
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${deliveryVariance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                            {deliveryVariance > 0 ? `${deliveryVariance}d late` : deliveryVariance === 0 ? 'On time' : `${Math.abs(deliveryVariance)}d early`}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 inline-block">Awaiting</span>
+                        )}
+                      </td>
+                      <td className="p-3 border-l border-gray-100 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border inline-block ${status.color}`}>
+                          {status.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Supplier Delivery Performance */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-gray-900">Supplier Performance</h3>
+          </div>
+          <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+            <table className="w-full text-left border-collapse min-w-[300px]">
+              <thead className="sticky top-0 bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500 z-10">
+                <tr>
+                  <th className="p-3 font-semibold">Supplier</th>
+                  <th className="p-3 font-semibold text-center border-l border-gray-100">Delivered</th>
+                  <th className="p-3 font-semibold text-center border-l border-gray-100">On-Time Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {vendorDeliveryRates.filter(v => v.totalOrders > 0).length === 0 ? (
+                  <tr><td colSpan="3" className="p-4 text-center text-sm text-gray-500">No delivery data yet.</td></tr>
+                ) : vendorDeliveryRates.filter(v => v.totalOrders > 0).map((v, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-3 font-medium text-xs text-gray-900">{v.name}</td>
+                    <td className="p-3 text-xs text-center text-gray-600 border-l border-gray-50">{v.totalOrders}</td>
+                    <td className="p-3 text-center border-l border-gray-50">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium inline-block ${v.onTimeRate >= 80 ? 'bg-emerald-100 text-emerald-700' : v.onTimeRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                        {v.onTimeRate}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT COLUMN: Financial Dashboard */}
+      <div className="space-y-4 md:space-y-6">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center pt-4 xl:pt-0">
+          <LayoutDashboard className="mr-2 text-blue-500" size={20} /> Financial Overview
+        </h3>
+
+        {/* Treasury Cash Position */}
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 md:p-6 rounded-xl shadow-md border border-slate-700 text-white relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row justify-between items-start mb-4 md:mb-6 relative z-10">
+            <div className="mb-4 sm:mb-0">
+              <p className="text-slate-400 font-medium text-xs md:text-sm flex items-center uppercase tracking-wider mb-1">
+                <Wallet size={16} className="mr-2"/> Designated Weekly Fund
+              </p>
+              <div className="flex items-end">
+                <h3 className="text-2xl md:text-3xl font-bold text-white">{formatCurrency(weeklyFund)}</h3>
+                {isAdmin && (
+                  <button onClick={() => {setEditFundAmount(weeklyFund); setIsFundModalOpen(true);}} className="ml-3 mb-1 text-slate-400 hover:text-white transition-colors p-2 -m-2">
+                    <Edit3 size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="text-left sm:text-right w-full sm:w-auto">
+               <p className="text-slate-400 font-medium text-xs md:text-sm uppercase tracking-wider mb-1">Remaining Available</p>
+               <h3 className="text-xl md:text-2xl font-bold text-emerald-400">{formatCurrency(weeklyFund - totalReleasedThisWeek - totalFundedUnpaid)}</h3>
+            </div>
+          </div>
+
+          {/* Usage Breakdown */}
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4 relative z-10">
+            <div className="bg-slate-800/80 p-3 md:p-4 rounded-lg border border-slate-700/50">
+              <p className="text-slate-400 text-[10px] md:text-xs uppercase tracking-wider mb-1">Released to Purchasing</p>
+              <h4 className="text-lg md:text-xl font-semibold text-white">{formatCurrency(totalReleasedThisWeek)}</h4>
+              <p className="text-slate-500 text-[9px] md:text-[10px] mt-1 hidden xs:block">Settled payments this week</p>
+            </div>
+            <div className="bg-slate-800/80 p-3 md:p-4 rounded-lg border border-slate-700/50">
+              <p className="text-slate-400 text-[10px] md:text-xs uppercase tracking-wider mb-1">Actively Earmarked</p>
+              <h4 className="text-lg md:text-xl font-semibold text-amber-400">{formatCurrency(totalFundedUnpaid)}</h4>
+              <p className="text-slate-500 text-[9px] md:text-[10px] mt-1 hidden xs:block">Funded but pending payment</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Metric Cards */}
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
+          <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <div className="p-2 md:p-3 bg-blue-50 rounded-lg text-blue-600 self-start sm:self-auto"><ShoppingCart size={20} className="md:w-6 md:h-6"/></div>
+            <div>
+              <p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Purchases YTD</p>
+              <h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalPurchases)}</h3>
+            </div>
+          </div>
+          <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <div className="p-2 md:p-3 bg-indigo-50 rounded-lg text-indigo-600 self-start sm:self-auto"><Truck size={20} className="md:w-6 md:h-6"/></div>
+            <div>
+              <p className="text-[10px] md:text-xs text-gray-500 font-medium">Pending Deliveries</p>
+              <h3 className="text-sm md:text-xl font-bold text-gray-900">{pendingDeliveriesCount}</h3>
+            </div>
+          </div>
+          <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <div className="p-2 md:p-3 bg-rose-50 rounded-lg text-rose-600 self-start sm:self-auto"><DollarSign size={20} className="md:w-6 md:h-6"/></div>
+            <div>
+              <p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Outstanding APV</p>
+              <h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalOutstanding)}</h3>
+            </div>
+          </div>
+          <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <div className="p-2 md:p-3 bg-amber-50 rounded-lg text-amber-600 self-start sm:self-auto"><AlertCircle size={20} className="md:w-6 md:h-6"/></div>
+            <div>
+              <p className="text-[10px] md:text-xs text-gray-500 font-medium">Past Due Payables</p>
+              <h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">
+                {formatCurrency(totalOutstanding - agingSummary['Current'])}
+              </h3>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Insights Card */}
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 md:p-6 rounded-xl border border-indigo-100 shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-3 sm:space-y-0">
+            <h3 className="text-base md:text-lg font-semibold text-indigo-900 flex items-center">
+              <Sparkles className="mr-2 text-indigo-600" size={18} /> AI Insights
+            </h3>
+            <button 
+              onClick={generateInsights}
+              disabled={isGeneratingInsights}
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50"
+            >
+              {isGeneratingInsights ? <Loader2 size={14} className="animate-spin mr-2" /> : <Sparkles size={14} className="mr-2" />}
+              {insights ? 'Refresh' : 'Generate'}
+            </button>
+          </div>
+          
+          <div className="bg-white/60 p-3 md:p-4 rounded-lg min-h-[80px] flex items-center text-indigo-900 text-xs md:text-sm leading-relaxed border border-indigo-100/50">
+            {isGeneratingInsights ? (
+              <span className="flex items-center text-indigo-600"><Loader2 size={16} className="animate-spin mr-2" /> Analyzing data...</span>
+            ) : insights ? (
+              <p>{insights}</p>
+            ) : (
+              <span className="text-indigo-400 italic">Click generate to receive an AI analysis of your aging report.</span>
+            )}
+          </div>
+        </div>
+
+        {/* Aging Distribution Chart (Visual) */}
+        <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4 md:mb-6 flex items-center">
+            <TrendingUp className="mr-2 text-gray-500" size={18} /> APV Aging Distribution
+          </h3>
+          
+          {totalOutstanding === 0 ? (
+            <p className="text-gray-500 text-center py-4 text-sm">No outstanding payables.</p>
+          ) : (
+            <div className="space-y-4">
+              {/* Stacked Bar */}
+              <div className="h-4 md:h-6 w-full flex rounded-full overflow-hidden shadow-inner bg-gray-100">
+                {['Current', '1-30 Days', '31-60 Days', '61-90 Days', '> 90 Days'].map(category => {
+                  const amount = agingSummary[category];
+                  if (amount === 0) return null;
+                  const percentage = ((amount / totalOutstanding) * 100).toFixed(2);
+                  return (
+                    <div 
+                      key={category} 
+                      style={{ width: `${percentage}%` }} 
+                      className={`${getAgingBgColor(category)} transition-all duration-500 hover:brightness-110`}
+                      title={`${category}: ${formatCurrency(amount)} (${percentage}%)`}
+                    />
+                  );
+                })}
+              </div>
+              
+              {/* Legend & Breakdown */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-4 pt-2 md:pt-4">
+                 {['Current', '1-30 Days', '31-60 Days', '61-90 Days', '> 90 Days'].map(category => (
+                   <div key={category} className="text-left md:text-center p-2 md:p-3 rounded-lg bg-gray-50">
+                     <div className="flex items-center justify-start md:justify-center space-x-1.5 md:space-x-2 mb-1">
+                       <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${getAgingBgColor(category)}`}></div>
+                       <span className="text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-tighter truncate">{category}</span>
+                     </div>
+                     <p className="font-bold text-gray-900 text-xs md:text-base truncate" title={formatCurrency(agingSummary[category])}>{formatCurrency(agingSummary[category])}</p>
+                     <p className="text-[9px] md:text-xs text-gray-500">{((agingSummary[category] / totalOutstanding) * 100 || 0).toFixed(1)}%</p>
+                   </div>
+                 ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
+  );
 
-    <script type="text/babel">
-        // --- React Hooks ---
-        const { useState, useMemo, useEffect } = React;
+  const renderPurchases = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500">
+      <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+        <h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>
+        {isAdmin && (
+          <button 
+            onClick={openAddPo}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center"
+          >
+            <Plus size={16} className="mr-1 md:mr-2" /> Add PO
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto w-full">
+        <table className="w-full text-left border-collapse min-w-[700px]">
+          <thead>
+            <tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500">
+              <th className="p-3 md:p-4 font-semibold">PO Details</th>
+              <th className="p-3 md:p-4 font-semibold">Vendor & Item</th>
+              <th className="p-3 md:p-4 font-semibold">Delivery Timeline</th>
+              <th className="p-3 md:p-4 font-semibold text-center">Status</th>
+              <th className="p-3 md:p-4 font-semibold text-right">Amount</th>
+              {isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {purchases.length === 0 ? (
+              <tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No Purchase Orders found.</td></tr>
+            ) : purchases.map((po) => {
+              const deliveryStatus = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
+              return (
+              <tr key={po.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
+                <td className="p-3 md:p-4">
+                  <div className="font-medium text-blue-600">{po.id}</div>
+                  <div className="text-[10px] md:text-xs text-gray-500 mt-1 flex items-center"><FileText size={10} className="mr-1 text-gray-400"/> PR: {po.prReceivedDate || 'N/A'}</div>
+                  <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><CalendarDays size={10} className="mr-1 text-gray-400"/> PO: {po.date}</div>
+                  <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><User size={10} className="mr-1 text-gray-400"/> {po.processorName || 'Unassigned'}</div>
+                </td>
+                <td className="p-3 md:p-4">
+                  <div className="text-gray-900 font-medium truncate max-w-[120px] md:max-w-xs">{po.vendor}</div>
+                  <div className="text-[10px] md:text-xs text-gray-500 mt-1 truncate max-w-[120px] md:max-w-xs">{po.description}</div>
+                </td>
+                <td className="p-3 md:p-4">
+                  <div className="text-[10px] md:text-xs space-y-1">
+                    <div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Expected:</span> <span className="text-gray-900">{po.expectedDelivery}</span></div>
+                    <div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Received:</span> <span className={po.receivedDate ? "text-gray-900 font-medium" : "text-gray-400 italic"}>{po.receivedDate || "Pending"}</span></div>
+                  </div>
+                </td>
+                <td className="p-3 md:p-4 text-center">
+                  <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] md:text-xs font-medium border block mb-1 ${deliveryStatus.color}`}>
+                    {deliveryStatus.label}
+                  </span>
+                  <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium block ${
+                    po.status === 'Invoiced' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {po.status}
+                  </span>
+                </td>
+                <td className="p-3 md:p-4 text-right font-medium text-gray-900">{formatCurrency(po.amount)}</td>
+                {isAdmin && (
+                  <td className="p-3 md:p-4 text-center flex items-center justify-center space-x-2 mt-2 md:mt-0">
+                    <button 
+                      onClick={() => openEditPo(po)}
+                      className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                      title="Edit PO"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    {!po.receivedDate && (
+                      <button 
+                        onClick={() => openReceiveModal(po)}
+                        className="text-[10px] md:text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors"
+                      >
+                        Receive
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleDeletePo(po.id)}
+                      className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            )})}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAPVs = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500">
+      <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+        <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Records</h3>
+        {isAdmin && (
+          <button 
+            onClick={openAddApv}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center"
+          >
+            <Plus size={16} className="mr-1 md:mr-2" /> Add APV
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto w-full">
+        <table className="w-full text-left border-collapse min-w-[750px]">
+          <thead>
+            <tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500">
+              <th className="p-3 md:p-4 font-semibold">APV Number</th>
+              <th className="p-3 md:p-4 font-semibold">Vendor & PO</th>
+              <th className="p-3 md:p-4 font-semibold">Due Date</th>
+              <th className="p-3 md:p-4 font-semibold text-right">Amount</th>
+              <th className="p-3 md:p-4 font-semibold text-center">Status</th>
+              {isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {apvs.length === 0 ? (
+              <tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No APV records found.</td></tr>
+            ) : apvs.map((apv) => {
+              const agingCat = getAgingCategory(apv.dueDate, apv.status);
+              return (
+                <tr key={apv.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
+                  <td className="p-3 md:p-4 font-medium text-gray-900">{apv.id}</td>
+                  <td className="p-3 md:p-4">
+                    <div className="font-medium flex items-center gap-2">
+                        <span className="text-gray-900 truncate max-w-[120px] md:max-w-xs">{apv.vendor}</span>
+                        {apv.paymentTerms === 'COD' && <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-[8px] font-black uppercase">COD</span>}
+                    </div>
+                    <div className="text-blue-600 text-[10px] md:text-xs mt-0.5">{apv.poId}</div>
+                  </td>
+                  <td className="p-3 md:p-4 text-gray-600">{apv.dueDate}</td>
+                  <td className="p-3 md:p-4 text-right font-medium text-gray-900">{formatCurrency(apv.amount)}</td>
+                  <td className="p-3 md:p-4 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-1">
+                      <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium border w-full max-w-[90px] ${getAgingColor(agingCat)}`}>
+                        {agingCat}
+                      </span>
+                      {apv.status === 'Paid' ? (
+                        <div className="text-[9px] md:text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-full max-w-[90px]">
+                          Settled:<br/><strong className="text-gray-900">{apv.settledDate}</strong>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => toggleFunded(apv)}
+                          disabled={!isAdmin}
+                          className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium transition-colors border w-full max-w-[90px] ${apv.funded ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        >
+                          {apv.funded ? 'Funded' : 'Pending Funds'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  {isAdmin && (
+                    <td className="p-3 md:p-4 text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <button 
+                          onClick={() => openEditApv(apv)}
+                          className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                          title="Edit APV"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        {apv.status === 'Unpaid' ? (
+                          <button 
+                            onClick={() => openPayModal(apv)}
+                            disabled={!apv.funded}
+                            title={!apv.funded ? "Requires Treasury Funding first" : "Mark as Paid"}
+                            className={`text-[10px] md:text-xs px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors ${apv.funded ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          >
+                            Pay
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => draftPaymentNotification(apv)}
+                            className="text-[10px] md:text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors flex items-center"
+                          >
+                            <Send size={12} className="mr-1" /> Notify
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleDeleteApv(apv.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAgingReport = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500 relative">
+      <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50">
+        <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Aging Summary Report</h3>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">As of {TODAY.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+      </div>
+
+      {/* Weekly Need To Pay Section */}
+      <div className="p-4 md:p-6 border-b border-gray-100 bg-slate-50">
+        <h4 className="text-xs md:text-sm font-semibold text-gray-900 mb-3 md:mb-4 flex items-center">
+          <AlertCircle size={16} className="mr-2 text-indigo-600 shrink-0" />
+          <span>Weekly Requirements <span className="hidden sm:inline">(Due by {endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span></span>
+        </h4>
         
-        // --- FIX: Safe Icons Extraction ---
-        // Prevents React Error #130 if a specific icon is missing or UMD loading fails
-        const LucideLibs = window.lucideReact || window.LucideReact || {};
-        const safeIcon = (iconName) => {
-            if (LucideLibs[iconName]) return LucideLibs[iconName];
-            return ({ size = 24, className = '' }) => (
-                <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M12 8v4l3 3"></path>
-                </svg>
-            );
-        };
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-center relative overflow-hidden">
+            <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Total Needed</div>
+            <div className="text-xl md:text-2xl font-bold text-gray-900 break-all">{formatCurrency(weeklyNeedToPay.total)}</div>
+            {weeklyNeedToPay.total > (weeklyFund - totalReleasedThisWeek) && (
+              <div className="mt-2 text-[9px] md:text-[10px] font-medium text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-100 inline-block">
+                Warning: Exceeds remaining fund
+              </div>
+            )}
+          </div>
+          
+          <div className="lg:col-span-3 bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">Requirement by Category</div>
+            
+            {weeklyNeedToPay.total === 0 ? (
+              <div className="text-xs md:text-sm text-gray-400 py-2">No payments required for this week.</div>
+            ) : (
+              <div>
+                <div className="flex h-3 md:h-4 w-full rounded-full overflow-hidden bg-gray-100 mb-3">
+                  {['> 90 Days', '61-90 Days', '31-60 Days', '1-30 Days', 'Current'].map(category => {
+                    const amount = weeklyNeedToPay[category];
+                    if (amount === 0) return null;
+                    const percentage = ((amount / weeklyNeedToPay.total) * 100).toFixed(2);
+                    return (
+                      <div 
+                        key={`bar-${category}`} 
+                        style={{ width: `${percentage}%` }} 
+                        className={`${getAgingBgColor(category)} transition-all`}
+                        title={`${category}: ${formatCurrency(amount)}`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-2">
+                  {['> 90 Days', '61-90 Days', '31-60 Days', '1-30 Days', 'Current'].map(category => (
+                    <div key={`legend-${category}`} className="text-left">
+                      <div className="flex items-center space-x-1.5 mb-0.5">
+                        <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${getAgingBgColor(category)}`}></div>
+                        <span className="text-[9px] md:text-[10px] font-semibold text-gray-600 uppercase tracking-tighter truncate">{category}</span>
+                      </div>
+                      <p className={`text-[10px] md:text-xs font-bold truncate ${weeklyNeedToPay[category] > 0 ? 'text-gray-900' : 'text-gray-400'}`} title={formatCurrency(weeklyNeedToPay[category])}>
+                        {formatCurrency(weeklyNeedToPay[category])}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
-        const LayoutDashboard = safeIcon('LayoutDashboard');
-        const ShoppingCart = safeIcon('ShoppingCart');
-        const FileText = safeIcon('FileText');
-        const AlertCircle = safeIcon('AlertCircle');
-        const Clock = safeIcon('Clock');
-        const CheckCircle = safeIcon('CheckCircle');
-        const TrendingUp = safeIcon('TrendingUp');
-        const DollarSign = safeIcon('DollarSign');
-        const Calendar = safeIcon('Calendar');
-        const Building = safeIcon('Building');
-        const Sparkles = safeIcon('Sparkles');
-        const Mail = safeIcon('Mail');
-        const Loader2 = safeIcon('Loader2');
-        const X = safeIcon('X');
-        const Copy = safeIcon('Copy');
-        const Check = safeIcon('Check');
-        const Truck = safeIcon('Truck');
-        const CalendarDays = safeIcon('CalendarDays');
-        const Lock = safeIcon('Lock');
-        const Plus = safeIcon('Plus');
-        const Trash2 = safeIcon('Trash2');
-        const AlertTriangle = safeIcon('AlertTriangle');
-        const Activity = safeIcon('Activity');
-        const Unlock = safeIcon('Unlock');
-        const User = safeIcon('User');
-        const Wallet = safeIcon('Wallet');
-        const Send = safeIcon('Send');
-        const Edit3 = safeIcon('Edit3');
-        const Menu = safeIcon('Menu');
+      <div className="overflow-x-auto w-full">
+        <table className="w-full text-right border-collapse min-w-[800px]">
+          <thead>
+            <tr className="bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500">
+              <th className="p-3 md:p-4 font-semibold text-left">Vendor</th>
+              <th className="p-3 md:p-4 font-semibold text-emerald-700 bg-emerald-50/50">Current</th>
+              <th className="p-3 md:p-4 font-semibold text-yellow-700 bg-yellow-50/50">1-30 Days</th>
+              <th className="p-3 md:p-4 font-semibold text-orange-700 bg-orange-50/50">31-60 Days</th>
+              <th className="p-3 md:p-4 font-semibold text-red-700 bg-red-50/50">61-90 Days</th>
+              <th className="p-3 md:p-4 font-semibold text-rose-700 bg-rose-50/50">&gt; 90 Days</th>
+              <th className="p-3 md:p-4 font-semibold bg-gray-50">Total</th>
+              <th className="p-3 md:p-4 font-semibold text-center bg-gray-50">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {vendorAging.length === 0 ? (
+              <tr>
+                <td colSpan="8" className="p-8 text-center text-sm text-gray-500">No outstanding balances.</td>
+              </tr>
+            ) : (
+              vendorAging.map((v, i) => (
+                <tr key={i} className="hover:bg-gray-50 transition-colors group text-xs md:text-sm">
+                  <td className="p-3 md:p-4 font-medium text-gray-900 text-left flex items-center max-w-[150px] truncate" title={v.name}>
+                    <Building size={14} className="text-gray-400 mr-1.5 shrink-0" />
+                    <span className="truncate">{v.name}</span>
+                  </td>
+                  <td className={`p-3 md:p-4 ${v['Current'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['Current'])}</td>
+                  <td className={`p-3 md:p-4 ${v['1-30 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['1-30 Days'])}</td>
+                  <td className={`p-3 md:p-4 ${v['31-60 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['31-60 Days'])}</td>
+                  <td className={`p-3 md:p-4 ${v['61-90 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['61-90 Days'])}</td>
+                  <td className={`p-3 md:p-4 ${v['> 90 Days'] > 0 ? 'text-rose-600 font-bold' : 'text-gray-300'}`}>{formatCurrency(v['> 90 Days'])}</td>
+                  <td className="p-3 md:p-4 font-bold text-gray-900 bg-gray-50/50 group-hover:bg-gray-100/50 transition-colors">{formatCurrency(v.total)}</td>
+                  <td className="p-3 md:p-4 text-center">
+                    <button 
+                      onClick={() => draftVendorEmail(v)}
+                      className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1.5 md:p-2 rounded-lg transition-colors flex items-center justify-center mx-auto"
+                      title="Draft Email"
+                    >
+                      <Sparkles size={14} className="md:mr-1" /> <span className="hidden md:inline text-[10px]">Draft</span>
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200 text-xs md:text-sm">
+            <tr>
+              <td className="p-3 md:p-4 text-left text-gray-900">TOTAL</td>
+              <td className="p-3 md:p-4 text-emerald-700">{formatCurrency(agingSummary['Current'])}</td>
+              <td className="p-3 md:p-4 text-yellow-700">{formatCurrency(agingSummary['1-30 Days'])}</td>
+              <td className="p-3 md:p-4 text-orange-700">{formatCurrency(agingSummary['31-60 Days'])}</td>
+              <td className="p-3 md:p-4 text-red-700">{formatCurrency(agingSummary['61-90 Days'])}</td>
+              <td className="p-3 md:p-4 text-rose-700">{formatCurrency(agingSummary['> 90 Days'])}</td>
+              <td className="p-3 md:p-4 text-gray-900 text-sm md:text-base">{formatCurrency(totalOutstanding)}</td>
+              <td className="p-3 md:p-4 bg-gray-50"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
 
-        // --- Firebase Initialization ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
-            authDomain: "elev8-be0f4.firebaseapp.com",
-            projectId: "elev8-be0f4",
-            storageBucket: "elev8-be0f4.firebasestorage.app",
-            messagingSenderId: "939507136986",
-            appId: "1:939507136986:web:8a8d417cbbc80921eda8e3"
-        };
-        const appId = 'my-procurement-app';
+  return (
+    <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden w-full relative">
+      
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" 
+          onClick={() => setIsMobileMenuOpen(false)} 
+        />
+      )}
+
+      {/* Sidebar (Responsive) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl md:shadow-xl transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-6 flex justify-between items-center">
+          <h1 className="text-xl font-bold text-white flex items-center">
+            <TrendingUp className="mr-3 text-blue-500" /> ProcureMonitor
+          </h1>
+          <button className="md:hidden text-slate-400 hover:text-white" onClick={() => setIsMobileMenuOpen(false)}>
+            <X size={24} />
+          </button>
+        </div>
+        <nav className="flex-1 px-4 space-y-2 mt-2 overflow-y-auto">
+          <button 
+            onClick={() => handleTabSwitch('dashboard')}
+            className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+          >
+            <LayoutDashboard className="mr-3" size={20} /> Dashboard
+          </button>
+          <button 
+            onClick={() => handleTabSwitch('purchases')}
+            className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'purchases' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+          >
+            <ShoppingCart className="mr-3" size={20} /> Purchase Orders
+          </button>
+          <button 
+            onClick={() => handleTabSwitch('apvs')}
+            className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'apvs' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+          >
+            <FileText className="mr-3" size={20} /> APV Records
+          </button>
+          <button 
+            onClick={() => handleTabSwitch('aging')}
+            className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'aging' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+          >
+            <Clock className="mr-3" size={20} /> Aging Report
+          </button>
+        </nav>
+        <div className="p-6 bg-slate-950 mt-auto">
+          {isAdmin ? (
+            <>
+              <button 
+                onClick={() => { setIsClearModalOpen(true); setIsMobileMenuOpen(false); }}
+                className="w-full flex items-center justify-center px-4 py-2 mb-3 bg-slate-800 hover:bg-red-900/50 hover:text-red-400 text-slate-400 rounded-lg transition-colors text-sm font-medium"
+              >
+                <Trash2 size={16} className="mr-2" /> Clear All Data
+              </button>
+              <button 
+                onClick={() => setIsAdmin(false)}
+                className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm font-medium"
+              >
+                <Lock size={16} className="mr-2" /> Lock Dashboard
+              </button>
+            </>
+          ) : (
+            <button 
+              onClick={() => { setShowAdminLogin(true); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg transition-colors text-sm font-medium"
+            >
+              <Unlock size={16} className="mr-2" /> Admin Login
+            </button>
+          )}
+          <div className="text-xs text-slate-500 uppercase font-semibold mb-2 flex items-center">
+            <Calendar size={12} className="mr-1" /> System Date
+          </div>
+          <div className="text-sm font-medium text-slate-300">
+            {TODAY.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto relative w-full flex flex-col">
+        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-5 sticky top-0 z-10 flex justify-between items-center shadow-sm w-full">
+          <div className="flex items-center min-w-0">
+            <button 
+              className="md:hidden mr-3 text-slate-600 hover:text-slate-900"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={24} />
+            </button>
+            <div className="truncate">
+              <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate">
+                {activeTab === 'apvs' ? 'Accounts Payable' : activeTab.replace('-', ' ')}
+              </h2>
+              <div className="flex items-center text-[10px] md:text-sm mt-0.5 md:mt-1 truncate">
+                {isAdmin ? (
+                  <span className="text-emerald-600 flex items-center bg-emerald-50 px-1.5 py-0.5 rounded mr-2 border border-emerald-100 shrink-0">
+                    <Check size={10} className="mr-1" /> <span className="hidden xs:inline">Super User</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-600 flex items-center bg-slate-100 px-1.5 py-0.5 rounded mr-2 border border-slate-200 shrink-0">
+                    <Lock size={10} className="mr-1" /> <span className="hidden xs:inline">View-Only</span>
+                  </span>
+                )}
+                <span className="text-gray-500 truncate hidden sm:inline">
+                  {isAdmin ? 'Full access to edit and manage records.' : 'Login as admin to edit records.'}
+                </span>
+              </div>
+            </div>
+          </div>
+          {activeTab === 'apvs' && (
+            <div className="hidden lg:flex bg-orange-50 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium items-center border border-orange-100 shrink-0 ml-4">
+              <AlertCircle size={16} className="mr-2" /> Review overdue accounts
+            </div>
+          )}
+        </header>
         
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1">
+          {activeTab === 'dashboard' && renderDashboard()}
+          {activeTab === 'purchases' && renderPurchases()}
+          {activeTab === 'apvs' && renderAPVs()}
+          {activeTab === 'aging' && renderAgingReport()}
+        </div>
+      </main>
 
-        // --- Constants & Data ---
-        const TODAY = new Date('2026-03-24T00:00:00');
+      {/* Admin Login Modal */}
+      {showAdminLogin && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-semibold text-gray-900 flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Admin Login</h3>
+              <button onClick={() => setShowAdminLogin(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleAdminLoginSubmit} className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">Enter the super user passcode to enable editing mode.</p>
+              <div>
+                <input 
+                  type="password" 
+                  autoFocus
+                  placeholder="Passcode"
+                  value={adminPassword} 
+                  onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} 
+                  className={`w-full px-3 py-3 md:py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${adminError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'}`} 
+                />
+                {adminError && <p className="text-xs text-red-500 mt-1">Incorrect passcode.</p>}
+              </div>
+              <div className="pt-2 flex justify-end space-x-3">
+                <button type="button" onClick={() => setShowAdminLogin(false)} className="px-4 py-2.5 md:py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Login</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-        const INITIAL_PURCHASES = [
-            { id: 'PO-2026-001', processorName: 'Alex Reyes', prReceivedDate: '2026-02-25', date: '2026-03-01', expectedDelivery: '2026-03-10', receivedDate: '2026-03-09', vendor: 'TechCorp Supplies', description: 'Engineering Laptops', amount: 150000, status: 'Invoiced' },
-            { id: 'PO-2026-002', processorName: 'Maria Santos', prReceivedDate: '2026-02-10', date: '2026-02-15', expectedDelivery: '2026-02-25', receivedDate: '2026-02-26', vendor: 'OfficeWorld', description: 'Ergonomic Chairs', amount: 25000, status: 'Invoiced' },
-            { id: 'PO-2026-003', processorName: 'Juan Dela Cruz', prReceivedDate: '2026-03-15', date: '2026-03-20', expectedDelivery: '2026-04-05', receivedDate: null, vendor: 'Global Logistics', description: 'Q1 Shipping Retainer', amount: 8000, status: 'Pending' },
-            { id: 'PO-2026-004', processorName: 'Alex Reyes', prReceivedDate: '2025-12-28', date: '2026-01-05', expectedDelivery: '2026-01-20', receivedDate: '2026-01-18', vendor: 'OfficeWorld', description: 'Desks & Cabinets', amount: 45000, status: 'Invoiced' }
-        ];
-
-        const INITIAL_APVS = [
-            { id: 'APV-26-001', poId: 'PO-2026-001', vendor: 'TechCorp Supplies', invoiceDate: '2026-03-05', dueDate: '2026-04-04', amount: 150000, status: 'Unpaid', funded: true, settledDate: null }, 
-            { id: 'APV-26-002', poId: 'PO-2026-002', vendor: 'OfficeWorld', invoiceDate: '2026-02-16', dueDate: '2026-03-18', amount: 25000, status: 'Unpaid', funded: false, settledDate: null }, 
-            { id: 'APV-26-005', poId: 'PO-2026-004', vendor: 'OfficeWorld', invoiceDate: '2026-01-10', dueDate: '2026-02-09', amount: 45000, status: 'Unpaid', funded: false, settledDate: null }
-        ];
-
-        // --- Helper Functions ---
-        const callGeminiAPI = async (prompt) => {
-            const apiKey = ""; // If hosting externally, Gemini API won't work without a key populated here.
-            if (!apiKey) return "API Key not configured for external hosting. Add your Gemini API key to use AI features.";
-            
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] }
-            };
-
-            let retries = 5;
-            let delay = 1000;
-
-            while (retries > 0) {
-                try {
-                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-                    const data = await response.json();
-                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-                } catch (error) {
-                    retries--;
-                    if (retries === 0) return "Failed to generate AI content. Please try again later.";
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2;
-                }
-            }
-        };
-
-        const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-
-        const getAgingCategory = (dueDate, status) => {
-            if (status === 'Paid') return 'Paid';
-            const due = new Date(dueDate);
-            const diffTime = TODAY - due;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            if (diffDays <= 0) return 'Current';
-            if (diffDays <= 30) return '1-30 Days';
-            if (diffDays <= 60) return '31-60 Days';
-            if (diffDays <= 90) return '61-90 Days';
-            return '> 90 Days';
-        };
-
-        const getAgingColor = (category) => {
-            switch (category) {
-                case 'Current': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-                case '1-30 Days': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-                case '31-60 Days': return 'bg-orange-100 text-orange-800 border-orange-200';
-                case '61-90 Days': return 'bg-red-100 text-red-800 border-red-200';
-                case '> 90 Days': return 'bg-rose-600 text-white border-rose-700';
-                case 'Paid': return 'bg-gray-100 text-gray-600 border-gray-200';
-                default: return 'bg-gray-100 text-gray-800';
-            }
-        };
-
-        const getAgingBgColor = (category) => {
-            switch (category) {
-                case 'Current': return 'bg-emerald-500';
-                case '1-30 Days': return 'bg-yellow-400';
-                case '31-60 Days': return 'bg-orange-500';
-                case '61-90 Days': return 'bg-red-500';
-                case '> 90 Days': return 'bg-rose-700';
-                default: return 'bg-gray-300';
-            }
-        };
-
-        const getDaysDiff = (startStr, endStr) => {
-            if (!startStr || !endStr) return null;
-            const s = new Date(startStr);
-            const e = new Date(endStr);
-            s.setHours(0,0,0,0); e.setHours(0,0,0,0);
-            return Math.round((e - s) / (1000 * 60 * 60 * 24));
-        };
-
-        const getDeliveryStatus = (expectedDelivery, receivedDate) => {
-            if (receivedDate) {
-                const expected = new Date(expectedDelivery);
-                const received = new Date(receivedDate);
-                return received <= expected 
-                ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } 
-                : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
-            }
-            const expected = new Date(expectedDelivery);
-            const diffTime = Math.ceil((TODAY - expected) / (1000 * 60 * 60 * 24));
-            if (diffTime > 0) return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
-            return { label: 'Pending Delivery', color: 'bg-blue-100 text-blue-800 border-blue-200' };
-        };
-
-        // --- Main App Component ---
-        function App() {
-            const [activeTab, setActiveTab] = useState('dashboard');
-            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-            
-            const [user, setUser] = useState(null);
-            const [purchases, setPurchases] = useState([]);
-            const [apvs, setApvs] = useState([]);
-            const [isDataLoading, setIsDataLoading] = useState(true);
-
-            const [isAdmin, setIsAdmin] = useState(false);
-            const [showAdminLogin, setShowAdminLogin] = useState(false);
-            const [adminPassword, setAdminPassword] = useState('');
-            const [adminError, setAdminError] = useState(false);
-
-            const [insights, setInsights] = useState(null);
-            const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-            const [emailModalOpen, setEmailModalOpen] = useState(false);
-            const [currentEmailDraft, setCurrentEmailDraft] = useState('');
-            const [isDraftingEmail, setIsDraftingEmail] = useState(false);
-            const [selectedVendor, setSelectedVendor] = useState('');
-            const [copySuccess, setCopySuccess] = useState(false);
-
-            const [isPoModalOpen, setIsPoModalOpen] = useState(false);
-            const [isApvModalOpen, setIsApvModalOpen] = useState(false);
-            const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
-            const [isClearModalOpen, setIsClearModalOpen] = useState(false);
-            const [isClearing, setIsClearing] = useState(false);
-            const [selectedPo, setSelectedPo] = useState(null);
-            
-            const [newPo, setNewPo] = useState({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', vendor: '', description: '', amount: '' });
-            const [newApv, setNewApv] = useState({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: null });
-            const [receiveDate, setReceiveDate] = useState('');
-
-            const [isPayApvModalOpen, setIsPayApvModalOpen] = useState(false);
-            const [selectedApvToPay, setSelectedApvToPay] = useState(null);
-            const [settleDate, setSettleDate] = useState('');
-
-            const [weeklyFund, setWeeklyFund] = useState(5000000);
-            const [isFundModalOpen, setIsFundModalOpen] = useState(false);
-            const [editFundAmount, setEditFundAmount] = useState('');
-
-            // --- Database Reference Helper ---
-            const getDbRef = () => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data');
-
-            useEffect(() => {
-                const initAuth = async () => {
-                    try {
-                        let currentUser = firebase.auth().currentUser;
-                        if (!currentUser) {
-                            const cred = await firebase.auth().signInAnonymously();
-                            currentUser = cred.user;
-                        }
-                        setUser(currentUser);
-                    } catch (error) {
-                        console.error("Authentication failed:", error);
-                    }
-                };
-                initAuth();
-
-                const unsubscribe = firebase.auth().onAuthStateChanged(setUser);
-                return () => unsubscribe();
-            }, []);
-
-            useEffect(() => {
-                if (!user) return;
-
-                const dataRef = getDbRef();
-
-                const unsubSettings = dataRef.collection('settings').doc('treasury').onSnapshot((docSnap) => {
-                    if (docSnap.exists) {
-                        setWeeklyFund(docSnap.data().amount);
-                    } else {
-                        dataRef.collection('settings').doc('treasury').set({ amount: 5000000 });
-                    }
-                });
-
-                const unsubPurchases = dataRef.collection('purchases').onSnapshot((snapshot) => {
-                    if (snapshot.empty) {
-                        INITIAL_PURCHASES.forEach(p => dataRef.collection('purchases').doc(p.id).set(p));
-                    } else {
-                        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                    }
-                });
-
-                const unsubApvs = dataRef.collection('apvs').onSnapshot((snapshot) => {
-                    if (snapshot.empty) {
-                        INITIAL_APVS.forEach(a => dataRef.collection('apvs').doc(a.id).set(a));
-                    } else {
-                        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                    }
-                    setIsDataLoading(false);
-                });
-
-                return () => {
-                    unsubPurchases();
-                    unsubApvs();
-                    unsubSettings();
-                };
-            }, [user]);
-
-            const { totalPurchases, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, vendorDeliveryRates, totalFundedUnpaid, totalReleasedThisWeek, weeklyNeedToPay, endOfWeek } = useMemo(() => {
-                let tPurchases = purchases.reduce((sum, p) => sum + p.amount, 0);
-                let pDeliveries = purchases.filter(p => !p.receivedDate).length;
-                let tOutstanding = 0;
-                
-                let tFundedUnpaid = 0;
-                let tReleasedThisWeek = 0;
-                const startOfWeek = new Date(TODAY);
-                startOfWeek.setDate(TODAY.getDate() - TODAY.getDay()); 
-                startOfWeek.setHours(0,0,0,0);
-                
-                const endOfCurrentWeek = new Date(startOfWeek);
-                endOfCurrentWeek.setDate(startOfWeek.getDate() + 6);
-                endOfCurrentWeek.setHours(23, 59, 59, 999);
-
-                let totalProcessingDays = 0;
-                let processedCount = 0;
-                let onTimeCount = 0;
-                let receivedCount = 0;
-                
-                const vDelivery = {};
-
-                purchases.forEach(p => {
-                    if (p.prReceivedDate && p.date) {
-                        const diff = getDaysDiff(p.prReceivedDate, p.date);
-                        if (diff !== null && diff >= 0) {
-                            totalProcessingDays += diff;
-                            processedCount++;
-                        }
-                    }
-
-                    if (!vDelivery[p.vendor]) vDelivery[p.vendor] = { name: p.vendor, totalOrders: 0, onTime: 0 };
-
-                    if (p.receivedDate && p.expectedDelivery) {
-                        receivedCount++;
-                        vDelivery[p.vendor].totalOrders++;
-                        const diff = getDaysDiff(p.expectedDelivery, p.receivedDate);
-                        if (diff !== null && diff <= 0) {
-                            onTimeCount++; 
-                            vDelivery[p.vendor].onTime++;
-                        }
-                    }
-                });
-
-                const summary = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0 };
-                const weeklyNeed = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0, total: 0 };
-                const vAging = {};
-
-                apvs.forEach(apv => {
-                    if (apv.status === 'Unpaid') {
-                        tOutstanding += apv.amount;
-                        if (apv.funded) tFundedUnpaid += apv.amount;
-
-                        const category = getAgingCategory(apv.dueDate, apv.status);
-                        if (summary[category] !== undefined) summary[category] += apv.amount;
-                        
-                        const dueDateObj = new Date(apv.dueDate);
-                        if (dueDateObj <= endOfCurrentWeek) {
-                            if (weeklyNeed[category] !== undefined) weeklyNeed[category] += apv.amount;
-                            weeklyNeed.total += apv.amount;
-                        }
-
-                        if (!vAging[apv.vendor]) {
-                            vAging[apv.vendor] = { name: apv.vendor, total: 0, 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0 };
-                        }
-                        vAging[apv.vendor].total += apv.amount;
-                        vAging[apv.vendor][category] += apv.amount;
-                    } else if (apv.status === 'Paid' && apv.settledDate) {
-                        const settled = new Date(apv.settledDate);
-                        if (settled >= startOfWeek) tReleasedThisWeek += apv.amount;
-                    }
-                });
-
-                return { 
-                    totalPurchases: tPurchases, 
-                    pendingDeliveriesCount: pDeliveries,
-                    totalOutstanding: tOutstanding, 
-                    agingSummary: summary,
-                    vendorAging: Object.values(vAging).sort((a, b) => b.total - a.total),
-                    avgProcessingTime: processedCount > 0 ? (totalProcessingDays / processedCount).toFixed(1) : 0,
-                    onTimeRate: receivedCount > 0 ? ((onTimeCount / receivedCount) * 100).toFixed(0) : 0,
-                    vendorDeliveryRates: Object.values(vDelivery).map(v => ({
-                        ...v, onTimeRate: v.totalOrders > 0 ? ((v.onTime / v.totalOrders) * 100).toFixed(0) : 0
-                    })).sort((a, b) => b.totalOrders - a.totalOrders),
-                    totalFundedUnpaid: tFundedUnpaid,
-                    totalReleasedThisWeek: tReleasedThisWeek,
-                    weeklyNeedToPay: weeklyNeed,
-                    endOfWeek: endOfCurrentWeek
-                };
-            }, [purchases, apvs, weeklyFund]);
-
-            // --- Handlers & Actions ---
-            const toggleFunded = async (apv) => {
-                if (!user || !isAdmin) return;
-                await getDbRef().collection('apvs').doc(apv.id).update({ funded: !apv.funded });
-            };
-
-            const openPayModal = (apv) => { setSelectedApvToPay(apv); setSettleDate(TODAY.toISOString().split('T')[0]); setIsPayApvModalOpen(true); };
-
-            const handlePayApv = async (e) => {
-                e.preventDefault();
-                if (!user || !isAdmin || !selectedApvToPay) return;
-                await getDbRef().collection('apvs').doc(selectedApvToPay.id).update({ status: 'Paid', settledDate: settleDate });
-                setIsPayApvModalOpen(false); setSelectedApvToPay(null); setSettleDate('');
-            };
-
-            const handleUpdateFund = async (e) => {
-                e.preventDefault();
-                if (!user || !isAdmin) return;
-                await getDbRef().collection('settings').doc('treasury').set({ amount: Number(editFundAmount) });
-                setIsFundModalOpen(false);
-            };
-
-            const handleAddPo = async (e) => {
-                e.preventDefault();
-                if (!user || !isAdmin) return;
-                await getDbRef().collection('purchases').doc(newPo.id).set({ 
-                    ...newPo, amount: Number(newPo.amount), status: 'Pending', receivedDate: null 
-                });
-                setIsPoModalOpen(false);
-                setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', vendor: '', description: '', amount: '' });
-            };
-
-            const handleAddApv = async (e) => {
-                e.preventDefault();
-                if (!user || !isAdmin) return;
-                await getDbRef().collection('apvs').doc(newApv.id).set({ 
-                    ...newApv, amount: Number(newApv.amount), status: 'Unpaid', funded: false, settledDate: null
-                });
-                setIsApvModalOpen(false);
-                setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: null });
-            };
-
-            const handleReceivePo = async (e) => {
-                e.preventDefault();
-                if (!user || !selectedPo || !isAdmin) return;
-                await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' });
-                setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate('');
-            };
-
-            const openReceiveModal = (po) => { setSelectedPo(po); setReceiveDate(TODAY.toISOString().split('T')[0]); setIsReceiveModalOpen(true); };
-
-            const handleDeletePo = async (id) => { if (user && isAdmin) await getDbRef().collection('purchases').doc(id).delete(); };
-            const handleDeleteApv = async (id) => { if (user && isAdmin) await getDbRef().collection('apvs').doc(id).delete(); };
-
-            const handleClearAllData = async () => {
-                if (!user || !isAdmin) return;
-                setIsClearing(true);
-                for (const po of purchases) await getDbRef().collection('purchases').doc(po.id).delete();
-                for (const apv of apvs) await getDbRef().collection('apvs').doc(apv.id).delete();
-                setIsClearing(false); setIsClearModalOpen(false);
-            };
-
-            const generateInsights = async () => {
-                setIsGeneratingInsights(true);
-                const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\n1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}\n31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}\n61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
-                const prompt = `Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight. Highlight any risks with older payables and suggest a quick strategy. Do not use formatting like bolding or asterisks.`;
-                const result = await callGeminiAPI(prompt);
-                setInsights(result);
-                setIsGeneratingInsights(false);
-            };
-
-            const draftVendorEmail = async (vendorData) => {
-                setSelectedVendor(vendorData.name); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
-                const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\n\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body.`;
-                const result = await callGeminiAPI(prompt);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const draftPaymentNotification = async (apv) => {
-                setSelectedVendor(apv.vendor); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully funded by our Treasury and settled on ${apv.settledDate}. Keep it polite, professional, and under 100 words. Do not include a subject line.`;
-                const result = await callGeminiAPI(prompt);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const handleCopy = () => {
-                const textArea = document.createElement("textarea");
-                textArea.value = currentEmailDraft;
-                document.body.appendChild(textArea); textArea.select();
-                try { document.execCommand('copy'); setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); } catch (err) {}
-                document.body.removeChild(textArea);
-            };
-
-            const handleAdminLoginSubmit = (e) => {
-                e.preventDefault();
-                if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
-                else { setAdminError(true); }
-            };
-
-            const handleTabSwitch = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); };
-
-            if (isDataLoading) {
-                return (
-                <div className="flex h-screen items-center justify-center bg-gray-50 flex-col px-4 text-center">
-                    <Loader2 size={48} className="animate-spin text-blue-600 mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-800">Initializing Private Desk Mode...</h2>
-                    <p className="text-gray-500 text-sm mt-2 flex items-center justify-center"><Lock size={14} className="mr-1" /> Securing your personalized data</p>
+      {/* Add/Edit APV Modal */}
+      {isApvModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[95vh] overflow-hidden flex flex-col">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-semibold text-gray-900 text-sm md:text-base">{editingApvId ? 'Edit APV Record' : 'Add New APV Record'}</h3>
+              <button onClick={() => setIsApvModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleAddApv} className="p-4 md:p-6 space-y-3 md:space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label>
+                  <input required readOnly={!!editingApvId} type="text" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editingApvId ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="e.g., APV-26-010" />
                 </div>
-                );
-            }
-
-            // --- Render Sections ---
-            const renderDashboard = () => (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
-                    {/* LEFT COLUMN: Timeline Report */}
-                    <div className="space-y-4 md:space-y-6">
-                        <h3 className="text-lg font-semibold text-gray-900 flex items-center"><Activity className="mr-2 text-indigo-500" size={20} /> Procurement Timeline</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                            <div className="p-4 md:p-5 rounded-xl bg-blue-50 border border-blue-100 flex items-center space-x-3 md:space-x-4">
-                                <div className="p-2 md:p-3 bg-blue-100 rounded-lg text-blue-600"><FileText size={20} className="md:w-6 md:h-6" /></div>
-                                <div><div className="text-xs text-blue-600 font-medium">Avg PR-to-PO</div><div className="text-lg md:text-xl font-bold text-blue-900">{avgProcessingTime} <span className="text-xs md:text-sm font-normal text-blue-700">Days</span></div></div>
-                            </div>
-                            <div className="p-4 md:p-5 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center space-x-3 md:space-x-4">
-                                <div className="p-2 md:p-3 bg-emerald-100 rounded-lg text-emerald-600"><CheckCircle size={20} className="md:w-6 md:h-6" /></div>
-                                <div><div className="text-xs text-emerald-600 font-medium">On-Time Delivery</div><div className="text-lg md:text-xl font-bold text-emerald-900">{onTimeRate}%</div></div>
-                            </div>
-                        </div>
-
-                        {/* Compact Timeline Table */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                                <table className="w-full text-left border-collapse min-w-[500px]">
-                                    <thead className="sticky top-0 bg-gray-50 z-10">
-                                        <tr className="border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500">
-                                            <th className="p-3 font-semibold">PO Info</th><th className="p-3 font-semibold border-l border-gray-200">Processing</th><th className="p-3 font-semibold border-l border-gray-200">Delivery</th><th className="p-3 font-semibold text-center border-l border-gray-200">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {purchases.length === 0 ? ( <tr><td colSpan="4" className="p-4 text-center text-sm text-gray-500">No data available.</td></tr> ) : purchases.map((po) => {
-                                        const processingDays = getDaysDiff(po.prReceivedDate, po.date);
-                                        const deliveryVariance = getDaysDiff(po.expectedDelivery, po.receivedDate);
-                                        const status = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
-                                        return (
-                                            <tr key={po.id} className="hover:bg-gray-50 transition-colors">
-                                                <td className="p-3">
-                                                    <div className="font-medium text-xs text-gray-900">{po.id}</div>
-                                                    <div className="text-[10px] text-gray-500 truncate max-w-[100px]">{po.vendor}</div>
-                                                    <div className="text-[10px] text-gray-400 mt-0.5 flex items-center" title="Purchasing Processor"><User size={10} className="mr-1"/> {po.processorName || 'Unassigned'}</div>
-                                                </td>
-                                                <td className="p-3 border-l border-gray-100">
-                                                    <div className="text-[10px] text-gray-500 mb-1">PR: <strong className="text-gray-900">{po.prReceivedDate || 'N/A'}</strong><br/>PO: <strong className="text-gray-900">{po.date}</strong></div>
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${processingDays !== null && processingDays > 5 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>{processingDays !== null ? `${processingDays}d turnaround` : 'N/A'}</span>
-                                                </td>
-                                                <td className="p-3 border-l border-gray-100">
-                                                    <div className="text-[10px] text-gray-500 mb-1">Exp: <strong className="text-gray-900">{po.expectedDelivery}</strong><br/>Rcv: <strong className={po.receivedDate ? 'text-gray-900' : 'text-gray-400 italic'}>{po.receivedDate || 'Pending'}</strong></div>
-                                                    {po.receivedDate ? ( <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${deliveryVariance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{deliveryVariance > 0 ? `${deliveryVariance}d late` : deliveryVariance === 0 ? 'On time' : `${Math.abs(deliveryVariance)}d early`}</span> ) : ( <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 inline-block">Awaiting</span> )}
-                                                </td>
-                                                <td className="p-3 border-l border-gray-100 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border inline-block ${status.color}`}>{status.label}</span></td>
-                                            </tr>
-                                        );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Supplier Delivery Performance */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><h3 className="text-sm font-semibold text-gray-900">Supplier Performance</h3></div>
-                            <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
-                                <table className="w-full text-left border-collapse min-w-[300px]">
-                                    <thead className="sticky top-0 bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500 z-10">
-                                        <tr><th className="p-3 font-semibold">Supplier</th><th className="p-3 font-semibold text-center border-l border-gray-100">Delivered</th><th className="p-3 font-semibold text-center border-l border-gray-100">On-Time Rate</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {vendorDeliveryRates.filter(v => v.totalOrders > 0).length === 0 ? ( <tr><td colSpan="3" className="p-4 text-center text-sm text-gray-500">No delivery data yet.</td></tr> ) : vendorDeliveryRates.filter(v => v.totalOrders > 0).map((v, i) => (
-                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                            <td className="p-3 font-medium text-xs text-gray-900">{v.name}</td>
-                                            <td className="p-3 text-xs text-center text-gray-600 border-l border-gray-50">{v.totalOrders}</td>
-                                            <td className="p-3 text-center border-l border-gray-50"><span className={`px-2 py-0.5 rounded text-[10px] font-medium inline-block ${v.onTimeRate >= 80 ? 'bg-emerald-100 text-emerald-700' : v.onTimeRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{v.onTimeRate}%</span></td>
-                                        </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* RIGHT COLUMN: Financial Dashboard */}
-                    <div className="space-y-4 md:space-y-6">
-                        <h3 className="text-lg font-semibold text-gray-900 flex items-center pt-4 xl:pt-0"><LayoutDashboard className="mr-2 text-blue-500" size={20} /> Financial Overview</h3>
-                        
-                        {/* Treasury Cash Position */}
-                        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 md:p-6 rounded-xl shadow-md border border-slate-700 text-white relative overflow-hidden">
-                            <div className="flex flex-col sm:flex-row justify-between items-start mb-4 md:mb-6 relative z-10">
-                                <div className="mb-4 sm:mb-0">
-                                    <p className="text-slate-400 font-medium text-xs md:text-sm flex items-center uppercase tracking-wider mb-1"><Wallet size={16} className="mr-2"/> Designated Weekly Fund</p>
-                                    <div className="flex items-end">
-                                        <h3 className="text-2xl md:text-3xl font-bold text-white">{formatCurrency(weeklyFund)}</h3>
-                                        {isAdmin && ( <button onClick={() => {setEditFundAmount(weeklyFund); setIsFundModalOpen(true);}} className="ml-3 mb-1 text-slate-400 hover:text-white transition-colors p-2 -m-2"><Edit3 size={16} /></button> )}
-                                    </div>
-                                </div>
-                                <div className="text-left sm:text-right w-full sm:w-auto">
-                                    <p className="text-slate-400 font-medium text-xs md:text-sm uppercase tracking-wider mb-1">Remaining Available</p>
-                                    <h3 className="text-xl md:text-2xl font-bold text-emerald-400">{formatCurrency(weeklyFund - totalReleasedThisWeek - totalFundedUnpaid)}</h3>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4 relative z-10">
-                                <div className="bg-slate-800/80 p-3 md:p-4 rounded-lg border border-slate-700/50">
-                                    <p className="text-slate-400 text-[10px] md:text-xs uppercase tracking-wider mb-1">Released to Purchasing</p><h4 className="text-lg md:text-xl font-semibold text-white">{formatCurrency(totalReleasedThisWeek)}</h4><p className="text-slate-500 text-[9px] md:text-[10px] mt-1 hidden xs:block">Settled payments this week</p>
-                                </div>
-                                <div className="bg-slate-800/80 p-3 md:p-4 rounded-lg border border-slate-700/50">
-                                    <p className="text-slate-400 text-[10px] md:text-xs uppercase tracking-wider mb-1">Actively Earmarked</p><h4 className="text-lg md:text-xl font-semibold text-amber-400">{formatCurrency(totalFundedUnpaid)}</h4><p className="text-slate-500 text-[9px] md:text-[10px] mt-1 hidden xs:block">Funded but pending payment</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Metric Cards */}
-                        <div className="grid grid-cols-2 gap-3 md:gap-4">
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-blue-50 rounded-lg text-blue-600 self-start sm:self-auto"><ShoppingCart size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Purchases YTD</p><h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalPurchases)}</h3></div></div>
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-indigo-50 rounded-lg text-indigo-600 self-start sm:self-auto"><Truck size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Pending Deliveries</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{pendingDeliveriesCount}</h3></div></div>
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-rose-50 rounded-lg text-rose-600 self-start sm:self-auto"><DollarSign size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Outstanding APV</p><h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalOutstanding)}</h3></div></div>
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-amber-50 rounded-lg text-amber-600 self-start sm:self-auto"><AlertCircle size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Past Due Payables</p><h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalOutstanding - agingSummary['Current'])}</h3></div></div>
-                        </div>
-
-                        {/* AI Insights Card */}
-                        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 md:p-6 rounded-xl border border-indigo-100 shadow-sm">
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-3 sm:space-y-0">
-                                <h3 className="text-base md:text-lg font-semibold text-indigo-900 flex items-center"><Sparkles className="mr-2 text-indigo-600" size={18} /> AI Insights</h3>
-                                <button onClick={generateInsights} disabled={isGeneratingInsights} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50">{isGeneratingInsights ? <Loader2 size={14} className="animate-spin mr-2" /> : <Sparkles size={14} className="mr-2" />}{insights ? 'Refresh' : 'Generate'}</button>
-                            </div>
-                            <div className="bg-white/60 p-3 md:p-4 rounded-lg min-h-[80px] flex items-center text-indigo-900 text-xs md:text-sm leading-relaxed border border-indigo-100/50">
-                                {isGeneratingInsights ? ( <span className="flex items-center text-indigo-600"><Loader2 size={16} className="animate-spin mr-2" /> Analyzing data...</span> ) : insights ? ( <p>{insights}</p> ) : ( <span className="text-indigo-400 italic">Click generate to receive an AI analysis of your aging report. Note: Requires API Key in source code.</span> )}
-                            </div>
-                        </div>
-
-                        {/* Aging Distribution Chart */}
-                        <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4 md:mb-6 flex items-center"><TrendingUp className="mr-2 text-gray-500" size={18} /> APV Aging Distribution</h3>
-                            {totalOutstanding === 0 ? ( <p className="text-gray-500 text-center py-4 text-sm">No outstanding payables.</p> ) : (
-                                <div className="space-y-4">
-                                    <div className="h-4 md:h-6 w-full flex rounded-full overflow-hidden shadow-inner bg-gray-100">
-                                        {['Current', '1-30 Days', '31-60 Days', '61-90 Days', '> 90 Days'].map(category => {
-                                            const amount = agingSummary[category];
-                                            if (amount === 0) return null;
-                                            const percentage = ((amount / totalOutstanding) * 100).toFixed(2);
-                                            return ( <div key={category} style={{ width: `${percentage}%` }} className={`${getAgingBgColor(category)} transition-all duration-500 hover:brightness-110`} title={`${category}: ${formatCurrency(amount)} (${percentage}%)`} /> );
-                                        })}
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-4 pt-2 md:pt-4">
-                                        {['Current', '1-30 Days', '31-60 Days', '61-90 Days', '> 90 Days'].map(category => (
-                                            <div key={category} className="text-left md:text-center p-2 md:p-3 rounded-lg bg-gray-50">
-                                                <div className="flex items-center justify-start md:justify-center space-x-1.5 md:space-x-2 mb-1">
-                                                    <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${getAgingBgColor(category)}`}></div>
-                                                    <span className="text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-tighter truncate">{category}</span>
-                                                </div>
-                                                <p className="font-bold text-gray-900 text-xs md:text-base truncate" title={formatCurrency(agingSummary[category])}>{formatCurrency(agingSummary[category])}</p>
-                                                <p className="text-[9px] md:text-xs text-gray-500">{((agingSummary[category] / totalOutstanding) * 100 || 0).toFixed(1)}%</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">PO Reference</label>
+                  <input required type="text" value={newApv.poId} onChange={e => setNewApv({...newApv, poId: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., PO-2026-003" />
                 </div>
-            );
-
-            const renderPurchases = () => (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500">
-                    <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>
-                        {isAdmin && ( <button onClick={() => setIsPoModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center"><Plus size={16} className="mr-1 md:mr-2" /> Add PO</button> )}
-                    </div>
-                    <div className="overflow-x-auto w-full">
-                        <table className="w-full text-left border-collapse min-w-[700px]">
-                            <thead>
-                                <tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500">
-                                    <th className="p-3 md:p-4 font-semibold">PO Details</th><th className="p-3 md:p-4 font-semibold">Vendor & Item</th><th className="p-3 md:p-4 font-semibold">Delivery Timeline</th><th className="p-3 md:p-4 font-semibold text-center">Status</th><th className="p-3 md:p-4 font-semibold text-right">Amount</th>{isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {purchases.length === 0 ? ( <tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No Purchase Orders found.</td></tr> ) : purchases.map((po) => {
-                                const deliveryStatus = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
-                                return (
-                                <tr key={po.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
-                                    <td className="p-3 md:p-4">
-                                        <div className="font-medium text-blue-600">{po.id}</div>
-                                        <div className="text-[10px] md:text-xs text-gray-500 mt-1 flex items-center"><FileText size={10} className="mr-1 text-gray-400"/> PR: {po.prReceivedDate || 'N/A'}</div>
-                                        <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><CalendarDays size={10} className="mr-1 text-gray-400"/> PO: {po.date}</div>
-                                        <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><User size={10} className="mr-1 text-gray-400"/> {po.processorName || 'Unassigned'}</div>
-                                    </td>
-                                    <td className="p-3 md:p-4"><div className="text-gray-900 font-medium truncate max-w-[120px] md:max-w-xs">{po.vendor}</div><div className="text-[10px] md:text-xs text-gray-500 mt-1 truncate max-w-[120px] md:max-w-xs">{po.description}</div></td>
-                                    <td className="p-3 md:p-4">
-                                        <div className="text-[10px] md:text-xs space-y-1">
-                                            <div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Expected:</span> <span className="text-gray-900">{po.expectedDelivery}</span></div>
-                                            <div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Received:</span> <span className={po.receivedDate ? "text-gray-900 font-medium" : "text-gray-400 italic"}>{po.receivedDate || "Pending"}</span></div>
-                                        </div>
-                                    </td>
-                                    <td className="p-3 md:p-4 text-center">
-                                        <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] md:text-xs font-medium border block mb-1 ${deliveryStatus.color}`}>{deliveryStatus.label}</span>
-                                        <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium block ${po.status === 'Invoiced' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>{po.status}</span>
-                                    </td>
-                                    <td className="p-3 md:p-4 text-right font-medium text-gray-900">{formatCurrency(po.amount)}</td>
-                                    {isAdmin && (
-                                    <td className="p-3 md:p-4 text-center flex items-center justify-center space-x-2 mt-2 md:mt-0">
-                                        {!po.receivedDate && ( <button onClick={() => openReceiveModal(po)} className="text-[10px] md:text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors">Receive</button> )}
-                                        <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-600 transition-colors p-1"><Trash2 size={16} /></button>
-                                    </td>
-                                    )}
-                                </tr>
-                                )})}
-                            </tbody>
-                        </table>
-                    </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label>
+                  <input required type="text" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Vendor Name" />
                 </div>
-            );
+              </div>
 
-            const renderAPVs = () => (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500">
-                    <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                        <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Records</h3>
-                        {isAdmin && ( <button onClick={() => setIsApvModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center"><Plus size={16} className="mr-1 md:mr-2" /> Add APV</button> )}
-                    </div>
-                    <div className="overflow-x-auto w-full">
-                        <table className="w-full text-left border-collapse min-w-[750px]">
-                            <thead>
-                                <tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500">
-                                    <th className="p-3 md:p-4 font-semibold">APV Number</th><th className="p-3 md:p-4 font-semibold">Vendor & PO</th><th className="p-3 md:p-4 font-semibold">Due Date</th><th className="p-3 md:p-4 font-semibold text-right">Amount</th><th className="p-3 md:p-4 font-semibold text-center">Status</th>{isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {apvs.length === 0 ? ( <tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No APV records found.</td></tr> ) : apvs.map((apv) => {
-                                const agingCat = getAgingCategory(apv.dueDate, apv.status);
-                                return (
-                                    <tr key={apv.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
-                                        <td className="p-3 md:p-4 font-medium text-gray-900">{apv.id}</td>
-                                        <td className="p-3 md:p-4"><div className="text-gray-900 truncate max-w-[120px] md:max-w-xs">{apv.vendor}</div><div className="text-blue-600 text-[10px] md:text-xs mt-0.5">{apv.poId}</div></td>
-                                        <td className="p-3 md:p-4 text-gray-600">{apv.dueDate}</td>
-                                        <td className="p-3 md:p-4 text-right font-medium text-gray-900">{formatCurrency(apv.amount)}</td>
-                                        <td className="p-3 md:p-4 text-center">
-                                            <div className="flex flex-col items-center justify-center space-y-1">
-                                                <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium border w-full max-w-[90px] ${getAgingColor(agingCat)}`}>{agingCat}</span>
-                                                {apv.status === 'Paid' ? (
-                                                    <div className="text-[9px] md:text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-full max-w-[90px]">Settled:<br/><strong className="text-gray-900">{apv.settledDate}</strong></div>
-                                                ) : (
-                                                    <button onClick={() => toggleFunded(apv)} disabled={!isAdmin} className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium transition-colors border w-full max-w-[90px] ${apv.funded ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>{apv.funded ? 'Funded' : 'Pending Funds'}</button>
-                                                )}
-                                            </div>
-                                        </td>
-                                        {isAdmin && (
-                                        <td className="p-3 md:p-4 text-center">
-                                            <div className="flex items-center justify-center space-x-2">
-                                                {apv.status === 'Unpaid' ? (
-                                                    <button onClick={() => openPayModal(apv)} disabled={!apv.funded} title={!apv.funded ? "Requires Treasury Funding first" : "Mark as Paid"} className={`text-[10px] md:text-xs px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors ${apv.funded ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Pay</button>
-                                                ) : (
-                                                    <button onClick={() => draftPaymentNotification(apv)} className="text-[10px] md:text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg font-medium transition-colors flex items-center"><Send size={12} className="mr-1" /> Notify</button>
-                                                )}
-                                                <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-600 transition-colors p-1"><Trash2 size={16} /></button>
-                                            </div>
-                                        </td>
-                                        )}
-                                    </tr>
-                                );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+              {/* Payment Terms Section */}
+              <div className="grid grid-cols-1 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Payment Terms</label>
+                  <select required value={newApv.paymentTerms} onChange={e => setNewApv({...newApv, paymentTerms: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="Terms">Regular Terms (Pay Later)</option>
+                    <option value="COD">COD (Cash on Delivery)</option>
+                  </select>
                 </div>
-            );
+              </div>
 
-            const renderAgingReport = () => (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500 relative">
-                    <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50">
-                        <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Aging Summary Report</h3><p className="text-xs md:text-sm text-gray-500 mt-1">As of {TODAY.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-                    </div>
-
-                    <div className="p-4 md:p-6 border-b border-gray-100 bg-slate-50">
-                        <h4 className="text-xs md:text-sm font-semibold text-gray-900 mb-3 md:mb-4 flex items-center"><AlertCircle size={16} className="mr-2 text-indigo-600 shrink-0" /><span>Weekly Requirements <span className="hidden sm:inline">(Due by {endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span></span></h4>
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
-                            <div className="bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-center relative overflow-hidden">
-                                <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Total Needed</div><div className="text-xl md:text-2xl font-bold text-gray-900 break-all">{formatCurrency(weeklyNeedToPay.total)}</div>
-                                {weeklyNeedToPay.total > (weeklyFund - totalReleasedThisWeek) && ( <div className="mt-2 text-[9px] md:text-[10px] font-medium text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-100 inline-block">Warning: Exceeds remaining fund</div> )}
-                            </div>
-                            <div className="lg:col-span-3 bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm">
-                                <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">Requirement by Category</div>
-                                {weeklyNeedToPay.total === 0 ? ( <div className="text-xs md:text-sm text-gray-400 py-2">No payments required for this week.</div> ) : (
-                                <div>
-                                    <div className="flex h-3 md:h-4 w-full rounded-full overflow-hidden bg-gray-100 mb-3">
-                                        {['> 90 Days', '61-90 Days', '31-60 Days', '1-30 Days', 'Current'].map(category => {
-                                            const amount = weeklyNeedToPay[category]; if (amount === 0) return null; const percentage = ((amount / weeklyNeedToPay.total) * 100).toFixed(2);
-                                            return ( <div key={`bar-${category}`} style={{ width: `${percentage}%` }} className={`${getAgingBgColor(category)} transition-all`} title={`${category}: ${formatCurrency(amount)}`} /> );
-                                        })}
-                                    </div>
-                                    <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-2">
-                                        {['> 90 Days', '61-90 Days', '31-60 Days', '1-30 Days', 'Current'].map(category => (
-                                            <div key={`legend-${category}`} className="text-left"><div className="flex items-center space-x-1.5 mb-0.5"><div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${getAgingBgColor(category)}`}></div><span className="text-[9px] md:text-[10px] font-semibold text-gray-600 uppercase tracking-tighter truncate">{category}</span></div><p className={`text-[10px] md:text-xs font-bold truncate ${weeklyNeedToPay[category] > 0 ? 'text-gray-900' : 'text-gray-400'}`} title={formatCurrency(weeklyNeedToPay[category])}>{formatCurrency(weeklyNeedToPay[category])}</p></div>
-                                        ))}
-                                    </div>
-                                </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto w-full">
-                        <table className="w-full text-right border-collapse min-w-[800px]">
-                            <thead>
-                                <tr className="bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500">
-                                    <th className="p-3 md:p-4 font-semibold text-left">Vendor</th><th className="p-3 md:p-4 font-semibold text-emerald-700 bg-emerald-50/50">Current</th><th className="p-3 md:p-4 font-semibold text-yellow-700 bg-yellow-50/50">1-30 Days</th><th className="p-3 md:p-4 font-semibold text-orange-700 bg-orange-50/50">31-60 Days</th><th className="p-3 md:p-4 font-semibold text-red-700 bg-red-50/50">61-90 Days</th><th className="p-3 md:p-4 font-semibold text-rose-700 bg-rose-50/50">&gt; 90 Days</th><th className="p-3 md:p-4 font-semibold bg-gray-50">Total</th><th className="p-3 md:p-4 font-semibold text-center bg-gray-50">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {vendorAging.length === 0 ? ( <tr><td colSpan="8" className="p-8 text-center text-sm text-gray-500">No outstanding balances.</td></tr> ) : (
-                                vendorAging.map((v, i) => (
-                                    <tr key={i} className="hover:bg-gray-50 transition-colors group text-xs md:text-sm">
-                                        <td className="p-3 md:p-4 font-medium text-gray-900 text-left flex items-center max-w-[150px] truncate" title={v.name}><Building size={14} className="text-gray-400 mr-1.5 shrink-0" /><span className="truncate">{v.name}</span></td>
-                                        <td className={`p-3 md:p-4 ${v['Current'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['Current'])}</td>
-                                        <td className={`p-3 md:p-4 ${v['1-30 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['1-30 Days'])}</td>
-                                        <td className={`p-3 md:p-4 ${v['31-60 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['31-60 Days'])}</td>
-                                        <td className={`p-3 md:p-4 ${v['61-90 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['61-90 Days'])}</td>
-                                        <td className={`p-3 md:p-4 ${v['> 90 Days'] > 0 ? 'text-rose-600 font-bold' : 'text-gray-300'}`}>{formatCurrency(v['> 90 Days'])}</td>
-                                        <td className="p-3 md:p-4 font-bold text-gray-900 bg-gray-50/50 group-hover:bg-gray-100/50 transition-colors">{formatCurrency(v.total)}</td>
-                                        <td className="p-3 md:p-4 text-center">
-                                            <button onClick={() => draftVendorEmail(v)} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1.5 md:p-2 rounded-lg transition-colors flex items-center justify-center mx-auto" title="Draft Email"><Sparkles size={14} className="md:mr-1" /> <span className="hidden md:inline text-[10px]">Draft</span></button>
-                                        </td>
-                                    </tr>
-                                )))}
-                            </tbody>
-                            <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200 text-xs md:text-sm">
-                                <tr>
-                                    <td className="p-3 md:p-4 text-left text-gray-900">TOTAL</td><td className="p-3 md:p-4 text-emerald-700">{formatCurrency(agingSummary['Current'])}</td><td className="p-3 md:p-4 text-yellow-700">{formatCurrency(agingSummary['1-30 Days'])}</td><td className="p-3 md:p-4 text-orange-700">{formatCurrency(agingSummary['31-60 Days'])}</td><td className="p-3 md:p-4 text-red-700">{formatCurrency(agingSummary['61-90 Days'])}</td><td className="p-3 md:p-4 text-rose-700">{formatCurrency(agingSummary['> 90 Days'])}</td><td className="p-3 md:p-4 text-gray-900 text-sm md:text-base">{formatCurrency(totalOutstanding)}</td><td className="p-3 md:p-4 bg-gray-50"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
+              <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
+                  <input required type="date" value={newApv.invoiceDate} onChange={e => setNewApv({...newApv, invoiceDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-            );
-
-            return (
-                <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden w-full relative">
-                    {/* Mobile Sidebar Overlay */}
-                    {isMobileMenuOpen && ( <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} /> )}
-
-                    {/* Sidebar */}
-                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl md:shadow-xl transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-6 flex justify-between items-center"><h1 className="text-xl font-bold text-white flex items-center"><TrendingUp className="mr-3 text-blue-500" /> ProcureMonitor</h1><button className="md:hidden text-slate-400 hover:text-white" onClick={() => setIsMobileMenuOpen(false)}><X size={24} /></button></div>
-                        <nav className="flex-1 px-4 space-y-2 mt-2 overflow-y-auto">
-                            <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
-                            <button onClick={() => handleTabSwitch('purchases')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'purchases' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><ShoppingCart className="mr-3" size={20} /> Purchase Orders</button>
-                            <button onClick={() => handleTabSwitch('apvs')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'apvs' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><FileText className="mr-3" size={20} /> APV Records</button>
-                            <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'aging' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
-                        </nav>
-                        <div className="p-6 bg-slate-950 mt-auto">
-                            {isAdmin ? (
-                                <>
-                                    <button onClick={() => { setIsClearModalOpen(true); setIsMobileMenuOpen(false); }} className="w-full flex items-center justify-center px-4 py-2 mb-3 bg-slate-800 hover:bg-red-900/50 hover:text-red-400 text-slate-400 rounded-lg transition-colors text-sm font-medium"><Trash2 size={16} className="mr-2" /> Clear All Data</button>
-                                    <button onClick={() => setIsAdmin(false)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm font-medium"><Lock size={16} className="mr-2" /> Lock Dashboard</button>
-                                </>
-                            ) : (
-                                <button onClick={() => { setShowAdminLogin(true); setIsMobileMenuOpen(false); }} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg transition-colors text-sm font-medium"><Unlock size={16} className="mr-2" /> Admin Login</button>
-                            )}
-                            <div className="text-xs text-slate-500 uppercase font-semibold mb-2 flex items-center"><Calendar size={12} className="mr-1" /> System Date</div>
-                            <div className="text-sm font-medium text-slate-300">{TODAY.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
-                        </div>
-                    </aside>
-
-                    {/* Main Content */}
-                    <main className="flex-1 overflow-y-auto relative w-full flex flex-col">
-                        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-5 sticky top-0 z-10 flex justify-between items-center shadow-sm w-full">
-                            <div className="flex items-center min-w-0">
-                                <button className="md:hidden mr-3 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button>
-                                <div className="truncate">
-                                    <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate">{activeTab === 'apvs' ? 'Accounts Payable' : activeTab.replace('-', ' ')}</h2>
-                                    <div className="flex items-center text-[10px] md:text-sm mt-0.5 md:mt-1 truncate">
-                                        {isAdmin ? ( <span className="text-emerald-600 flex items-center bg-emerald-50 px-1.5 py-0.5 rounded mr-2 border border-emerald-100 shrink-0"><Check size={10} className="mr-1" /> <span className="hidden xs:inline">Super User</span></span> ) : ( <span className="text-slate-600 flex items-center bg-slate-100 px-1.5 py-0.5 rounded mr-2 border border-slate-200 shrink-0"><Lock size={10} className="mr-1" /> <span className="hidden xs:inline">View-Only</span></span> )}
-                                        <span className="text-gray-500 truncate hidden sm:inline">{isAdmin ? 'Full access to edit and manage records.' : 'Login as admin to edit records.'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            {activeTab === 'apvs' && ( <div className="hidden lg:flex bg-orange-50 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium items-center border border-orange-100 shrink-0 ml-4"><AlertCircle size={16} className="mr-2" /> Review overdue accounts</div> )}
-                        </header>
-                        
-                        <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1">
-                            {activeTab === 'dashboard' && renderDashboard()}
-                            {activeTab === 'purchases' && renderPurchases()}
-                            {activeTab === 'apvs' && renderAPVs()}
-                            {activeTab === 'aging' && renderAgingReport()}
-                        </div>
-                    </main>
-
-                    {/* Modals */}
-                    {showAdminLogin && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Admin Login</h3><button onClick={() => setShowAdminLogin(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
-                                <form onSubmit={handleAdminLoginSubmit} className="p-6 space-y-4">
-                                    <p className="text-sm text-gray-600">Enter the super user passcode to enable editing mode.</p>
-                                    <div>
-                                        <input type="password" autoFocus placeholder="Passcode (try admin123)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 md:py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${adminError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'}`} />
-                                        {adminError && <p className="text-xs text-red-500 mt-1">Incorrect passcode.</p>}
-                                    </div>
-                                    <div className="pt-2 flex justify-end space-x-3"><button type="button" onClick={() => setShowAdminLogin(false)} className="px-4 py-2.5 md:py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Login</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Email Draft Modal */}
-                    {emailModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 flex items-center text-sm md:text-base"><Mail size={16} className="mr-2 text-indigo-600" /> <span className="truncate">Drafting Email to {selectedVendor}</span></h3><button onClick={() => setEmailModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors p-1 shrink-0"><X size={20} /></button></div>
-                                <div className="p-4 md:p-6 bg-white flex-1 overflow-y-auto">
-                                    {isDraftingEmail ? (
-                                        <div className="flex flex-col items-center justify-center py-12 text-indigo-600"><Loader2 size={32} className="animate-spin mb-4" /><p className="font-medium text-gray-700 text-sm md:text-base">Gemini is writing your email...</p><p className="text-xs text-gray-500 mt-1 text-center">Reviewing data for {selectedVendor}</p></div>
-                                    ) : (
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-gray-800 whitespace-pre-wrap text-xs md:text-sm leading-relaxed max-h-[50vh] overflow-y-auto">{currentEmailDraft}</div>
-                                    )}
-                                </div>
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-t border-gray-100 bg-gray-50 flex flex-col-reverse sm:flex-row justify-end sm:space-x-3">
-                                    <button onClick={() => setEmailModalOpen(false)} className="w-full sm:w-auto px-4 py-2.5 md:py-2 mt-2 sm:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors text-center">Close</button>
-                                    <button disabled={isDraftingEmail} onClick={handleCopy} className="w-full sm:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50">{copySuccess ? <Check size={16} className="mr-2" /> : <Copy size={16} className="mr-2" />}{copySuccess ? 'Copied!' : 'Copy to Clipboard'}</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Add PO Modal */}
-                    {isPoModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[95vh] overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 text-sm md:text-base">Add New Purchase Order</h3><button onClick={() => setIsPoModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
-                                <form onSubmit={handleAddPo} className="p-4 md:p-6 space-y-3 md:space-y-4 overflow-y-auto flex-1">
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">PO Number</label><input required type="text" value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="e.g., PO-2026-006" /></div>
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">PR Received Date</label><input required type="date" value={newPo.prReceivedDate} onChange={e => setNewPo({...newPo, prReceivedDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    </div>
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">PO Issue Date</label><input required type="date" value={newPo.date} onChange={e => setNewPo({...newPo, date: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery</label><input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    </div>
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="Vendor Name" /></div>
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Purchasing Processor</label><input required type="text" value={newPo.processorName} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="e.g., Alex Reyes" /></div>
-                                    </div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Total Amount (₱)</label><input required type="number" min="0" step="0.01" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" /></div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Description / Items</label><input required type="text" value={newPo.description} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="Brief description" /></div>
-                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsPoModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">Save</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Add APV Modal */}
-                    {isApvModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[95vh] overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 text-sm md:text-base">Add New APV Record</h3><button onClick={() => setIsApvModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
-                                <form onSubmit={handleAddApv} className="p-4 md:p-6 space-y-3 md:space-y-4 overflow-y-auto flex-1">
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label><input required type="text" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="e.g., APV-26-010" /></div>
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">PO Reference</label><input required type="text" value={newApv.poId} onChange={e => setNewApv({...newApv, poId: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="e.g., PO-2026-003" /></div>
-                                    </div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="Vendor Name" /></div>
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label><input required type="date" value={newApv.invoiceDate} onChange={e => setNewApv({...newApv, invoiceDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label><input required type="date" value={newApv.dueDate} onChange={e => setNewApv({...newApv, dueDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    </div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Billed Amount (₱)</label><input required type="number" min="0" step="0.01" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" placeholder="0.00" /></div>
-                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsApvModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">Save</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Receive PO & Other Minor Modals... */}
-                    {isReceiveModalOpen && selectedPo && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 text-sm md:text-base">Mark PO as Received</h3><button onClick={() => setIsReceiveModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
-                                <form onSubmit={handleReceivePo} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-sm text-gray-600 mb-4">Confirming receipt for <strong>{selectedPo.id}</strong> from {selectedPo.vendor}.</div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Date Received</label><input required type="date" value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    <div className="pt-2 flex justify-end space-x-3"><button type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Confirm</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {isFundModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-semibold text-gray-900 text-sm md:text-base">Update Weekly Fund</h3><button onClick={() => setIsFundModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
-                                <form onSubmit={handleUpdateFund} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-xs md:text-sm text-gray-600 mb-2">Set the total treasury allocation designated for this week's purchasing and APV settlements.</div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Designated Fund Amount (₱)</label><input required type="number" min="0" step="0.01" value={editFundAmount} onChange={e => setEditFundAmount(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    <div className="pt-2 flex justify-end space-x-3"><button type="button" onClick={() => setIsFundModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-medium">Save</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {isPayApvModalOpen && selectedApvToPay && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-emerald-100 flex justify-between items-center bg-emerald-50"><h3 className="font-semibold text-emerald-900 text-sm md:text-base">Process APV Payment</h3><button onClick={() => setIsPayApvModalOpen(false)} className="text-emerald-600 hover:text-emerald-800"><X size={20} /></button></div>
-                                <form onSubmit={handlePayApv} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-sm text-gray-600 mb-2">Settling payment for <strong>{selectedApvToPay.id}</strong> to {selectedApvToPay.vendor}.</div>
-                                    <div className="text-2xl font-bold text-gray-900 mb-4">{formatCurrency(selectedApvToPay.amount)}</div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Date Settled</label><input required type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm" /></div>
-                                    <div className="pt-2 flex justify-end space-x-3"><button type="button" onClick={() => setIsPayApvModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium">Confirm</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {isClearModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50"><h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Warning</h3><button onClick={() => setIsClearModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button></div>
-                                <div className="p-4 md:p-6 space-y-4 text-center">
-                                    <p className="text-sm md:text-base text-gray-700">Are you sure you want to permanently delete all Purchase Orders and APV records?</p>
-                                    <p className="text-xs md:text-sm text-gray-500">This action cannot be undone.</p>
-                                </div>
-                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex justify-end space-x-3">
-                                    <button onClick={() => setIsClearModalOpen(false)} disabled={isClearing} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg">Cancel</button>
-                                    <button onClick={handleClearAllData} disabled={isClearing} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center justify-center disabled:opacity-50">{isClearing ? <Loader2 size={16} className="animate-spin mr-2" /> : <Trash2 size={16} className="mr-2" />}{isClearing ? 'Deleting...' : 'Delete Data'}</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                  <input required type="date" value={newApv.dueDate} onChange={e => setNewApv({...newApv, dueDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-            );
-        }
+              </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+              <div className="grid grid-cols-1 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Billed Amount (₱)</label>
+                  <input required type="number" min="0" step="0.01" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" />
+                </div>
+              </div>
+
+              {/* COD / Immediate Payment Section */}
+              {newApv.paymentTerms === 'COD' && (
+                <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
+                  <div>
+                    <label className="block text-xs font-medium text-orange-800 mb-1">Payment Status</label>
+                    <select required value={newApv.status} onChange={e => setNewApv({...newApv, status: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-orange-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white">
+                      <option value="Unpaid">Unpaid</option>
+                      <option value="Paid">Paid (Settled)</option>
+                    </select>
+                  </div>
+                  {newApv.status === 'Paid' && (
+                    <div>
+                      <label className="block text-xs font-medium text-orange-800 mb-1">Date Paid</label>
+                      <input required type="date" value={newApv.settledDate} onChange={e => setNewApv({...newApv, settledDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-orange-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                <button type="button" onClick={() => setIsApvModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Receive PO Modal */}
+      {isReceiveModalOpen && selectedPo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-semibold text-gray-900 text-sm md:text-base">Mark PO as Received</h3>
+              <button onClick={() => setIsReceiveModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleReceivePo} className="p-4 md:p-6 space-y-4">
+              <div className="text-sm text-gray-600 mb-4">
+                Confirming receipt for <strong>{selectedPo.id}</strong> from {selectedPo.vendor}.
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date Received</label>
+                <input 
+                  required 
+                  type="date" 
+                  value={receiveDate} 
+                  onChange={e => setReceiveDate(e.target.value)} 
+                  className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                />
+              </div>
+              <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Treasury Fund Modal */}
+      {isFundModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-semibold text-gray-900 text-sm md:text-base">Update Weekly Fund</h3>
+              <button onClick={() => setIsFundModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdateFund} className="p-4 md:p-6 space-y-4">
+              <div className="text-xs md:text-sm text-gray-600 mb-2">
+                Set the total treasury allocation designated for this week's purchasing and APV settlements.
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Designated Fund Amount (₱)</label>
+                <input 
+                  required 
+                  type="number" 
+                  min="0"
+                  step="0.01"
+                  value={editFundAmount} 
+                  onChange={e => setEditFundAmount(e.target.value)} 
+                  className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800" 
+                />
+              </div>
+              <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                <button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-medium transition-colors">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pay APV Modal */}
+      {isPayApvModalOpen && selectedApvToPay && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-emerald-100 flex justify-between items-center bg-emerald-50">
+              <h3 className="font-semibold text-emerald-900 text-sm md:text-base">Process APV Payment</h3>
+              <button onClick={() => setIsPayApvModalOpen(false)} className="text-emerald-600 hover:text-emerald-800"><X size={20} /></button>
+            </div>
+            <form onSubmit={handlePayApv} className="p-4 md:p-6 space-y-4">
+              <div className="text-sm text-gray-600 mb-2">
+                Settling payment for <strong>{selectedApvToPay.id}</strong> to {selectedApvToPay.vendor}.
+              </div>
+              <div className="text-2xl font-bold text-gray-900 mb-4">
+                {formatCurrency(selectedApvToPay.amount)}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date Settled</label>
+                <input 
+                  required 
+                  type="date" 
+                  value={settleDate} 
+                  onChange={e => setSettleDate(e.target.value)} 
+                  className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                />
+              </div>
+              <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                <button type="button" onClick={() => setIsPayApvModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Data Modal */}
+      {isClearModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
+              <h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base">
+                <AlertTriangle size={18} className="mr-2" /> Warning
+              </h3>
+              <button onClick={() => setIsClearModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button>
+            </div>
+            <div className="p-4 md:p-6 space-y-4 text-center">
+              <p className="text-sm md:text-base text-gray-700">Are you sure you want to permanently delete all Purchase Orders and APV records?</p>
+              <p className="text-xs md:text-sm text-gray-500">This action cannot be undone.</p>
+            </div>
+            <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+              <button onClick={() => setIsClearModalOpen(false)} disabled={isClearing} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
+              <button 
+                onClick={handleClearAllData} 
+                disabled={isClearing}
+                className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50"
+              >
+                {isClearing ? <Loader2 size={16} className="animate-spin mr-2" /> : <Trash2 size={16} className="mr-2" />}
+                {isClearing ? 'Deleting...' : 'Delete Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
