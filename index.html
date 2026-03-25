@@ -514,29 +514,6 @@
                         </div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                                <table className="w-full text-left border-collapse min-w-[500px]">
-                                    <thead className="sticky top-0 bg-gray-50 z-10"><tr className="border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500"><th className="p-3 font-semibold">PO Info</th><th className="p-3 font-semibold border-l border-gray-200">Processing</th><th className="p-3 font-semibold border-l border-gray-200">Delivery</th><th className="p-3 font-semibold text-center border-l border-gray-200">Status</th></tr></thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {purchases.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-sm text-gray-500">No data available.</td></tr>) : purchases.map((po) => {
-                                            const processingDays = getDaysDiff(po.prReceivedDate, po.date);
-                                            const deliveryVariance = getDaysDiff(po.expectedDelivery, po.receivedDate);
-                                            const status = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
-                                            return (
-                                                <tr key={po.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="p-3"><div className="font-medium text-xs text-gray-900">{po.id}</div><div className="text-[10px] text-gray-500 truncate max-w-[100px]">{po.vendor}</div><div className="text-[10px] text-gray-400 mt-0.5 flex items-center" title="Purchasing Processor"><User size={10} className="mr-1"/> {po.processorName || 'Unassigned'}</div></td>
-                                                    <td className="p-3 border-l border-gray-100"><div className="text-[10px] text-gray-500 mb-1">PR: <strong className="text-gray-900">{po.prReceivedDate || 'N/A'}</strong><br/>PO: <strong className="text-gray-900">{po.date}</strong></div><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${processingDays !== null && processingDays > 5 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>{processingDays !== null ? `${processingDays}d turnaround` : 'N/A'}</span></td>
-                                                    <td className="p-3 border-l border-gray-100"><div className="text-[10px] text-gray-500 mb-1">Exp: <strong className="text-gray-900">{po.expectedDelivery}</strong><br/>Rcv: <strong className={po.receivedDate ? 'text-gray-900' : 'text-gray-400 italic'}>{po.receivedDate || 'Pending'}</strong></div>{po.receivedDate ? (<span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block ${deliveryVariance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{deliveryVariance > 0 ? `${deliveryVariance}d late` : deliveryVariance === 0 ? 'On time' : `${Math.abs(deliveryVariance)}d early`}</span>) : (<span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 inline-block">Awaiting</span>)}</td>
-                                                    <td className="p-3 border-l border-gray-100 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border inline-block ${status.color}`}>{status.label}</span></td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                             <div className="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><h3 className="text-sm font-semibold text-gray-900">Supplier Performance</h3></div>
                             <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
                                 <table className="w-full text-left border-collapse min-w-[300px]">
