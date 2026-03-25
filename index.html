@@ -102,6 +102,11 @@
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
+
+        // --- Constants ---
+        const TODAY = new Date('2026-03-24T00:00:00'); 
+
+        // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
             const apiKey = "";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
@@ -278,7 +283,7 @@
 
                 const unsubPurchases = dbRef.collection('purchases').onSnapshot(
                     (snapshot) => {
-                        if (snapshot.empty) { INITIAL_PURCHASES.forEach(p => dbRef.collection('purchases').doc(p.id).set(p)); } 
+                        if (snapshot.empty) { setPurchases([]); } 
                         else {
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
@@ -289,7 +294,7 @@
 
                 const unsubApvs = dbRef.collection('apvs').onSnapshot(
                     (snapshot) => {
-                        if (snapshot.empty) { INITIAL_APVS.forEach(a => dbRef.collection('apvs').doc(a.id).set(a)); } 
+                        if (snapshot.empty) { setApvs([]); } 
                         else {
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
