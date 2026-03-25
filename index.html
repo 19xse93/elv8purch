@@ -65,11 +65,19 @@
                 const iconRef = useRef(null);
                 useEffect(() => {
                     if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
-                        const svgString = window.lucide.icons[iconName].toSvg({ class: className, width: size, height: size });
-                        iconRef.current.innerHTML = svgString;
+                        // Reset the container with the placeholder <i> tag
+                        iconRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
+                        // Run createIcons scoped to this specific wrapper using official API
+                        window.lucide.createIcons({
+                            icons: { [iconName]: window.lucide.icons[iconName] },
+                            nameAttr: 'data-lucide',
+                            attrs: { width: size, height: size, class: className },
+                            root: iconRef.current
+                        });
                     }
-                }, [iconName, size, className]);
-                return <span ref={iconRef} className="inline-flex items-center justify-center" style={{ width: size, height: size }}></span>;
+                }, [size, className]);
+                // Wrap in a span so React DOM diffing doesn't crash when Lucide replaces the <i> child with an <svg>
+                return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
             };
         };
 
