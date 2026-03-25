@@ -544,7 +544,7 @@
 
             const handleAdminLoginSubmit = (e) => {
                 e.preventDefault();
-                if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                if (adminPassword === 'purch321') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
                 else { setAdminError(true); }
             };
 
@@ -762,7 +762,7 @@
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
                                 <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Super User Login</h3>
-                                <input type="password" autoFocus placeholder="Passcode (try admin123)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
+                                <input type="password" autoFocus placeholder="Passcode (try masterpopo)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
                                 <div className="flex justify-end space-x-3"><button onClick={() => setShowAdminLogin(false)} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button onClick={handleAdminLoginSubmit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">Login</button></div>
                             </div>
                         </div>
