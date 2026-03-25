@@ -544,7 +544,7 @@
 
             const handleAdminLoginSubmit = (e) => {
                 e.preventDefault();
-                if (adminPassword === 'purch321') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
                 else { setAdminError(true); }
             };
 
@@ -610,9 +610,20 @@
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
-                        <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => (
+                        <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
+                            const linkedApv = apvs.find(a => a.poId === po.id);
+                            return (
                             <tr key={po.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="p-4"><div className="font-bold text-blue-600">{po.id}</div><div className="text-[10px] text-gray-400 uppercase font-black">{po.businessUnit}</div><div className="text-[10px] text-gray-500">PR Date: {po.prReceivedDate}</div></td>
+                                <td className="p-4">
+                                    <div className="font-bold text-blue-600">{po.id}</div>
+                                    <div className="text-[10px] text-gray-400 uppercase font-black">{po.businessUnit}</div>
+                                    <div className="text-[10px] text-gray-500 mb-1.5">PR Date: {po.prReceivedDate}</div>
+                                    {linkedApv ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 inline-flex items-center" title={`Linked APV: ${linkedApv.id}`}><Check size={10} className="mr-1"/> APV: {linkedApv.id}</span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200 inline-flex items-center" title="No APV created yet"><AlertCircle size={10} className="mr-1"/> No APV</span>
+                                    )}
+                                </td>
                                 <td className="p-4 font-medium text-gray-900">{po.vendor}</td>
                                 <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
                                 <td className="p-4 text-right font-bold">{formatCurrency(po.amount)}</td>
@@ -624,7 +635,7 @@
                                     </td>
                                 )}
                             </tr>
-                        ))}</tbody>
+                        )})}</tbody>
                     </table></div>
                 </div>
             );
@@ -762,7 +773,7 @@
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
                                 <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Super User Login</h3>
-                                <input type="password" autoFocus placeholder="Passcode (try masterpopo)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
+                                <input type="password" autoFocus placeholder="Passcode (try admin123)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
                                 <div className="flex justify-end space-x-3"><button onClick={() => setShowAdminLogin(false)} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button onClick={handleAdminLoginSubmit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">Login</button></div>
                             </div>
                         </div>
