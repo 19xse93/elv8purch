@@ -65,9 +65,7 @@
                 const iconRef = useRef(null);
                 useEffect(() => {
                     if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
-                        // Reset the container with the placeholder <i> tag
                         iconRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
-                        // Run createIcons scoped to this specific wrapper using official API
                         window.lucide.createIcons({
                             icons: { [iconName]: window.lucide.icons[iconName] },
                             nameAttr: 'data-lucide',
@@ -76,7 +74,6 @@
                         });
                     }
                 }, [size, className]);
-                // Wrap in a span so React DOM diffing doesn't crash when Lucide replaces the <i> child with an <svg>
                 return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
             };
         };
@@ -89,7 +86,7 @@
         const Truck = safeIcon('Truck'); const CalendarDays = safeIcon('CalendarDays'); const Lock = safeIcon('Lock');
         const Plus = safeIcon('Plus'); const Trash2 = safeIcon('Trash2'); const AlertTriangle = safeIcon('AlertTriangle');
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
-        const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu');
+        const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
 
         // --- Firebase Initialization ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -110,16 +107,16 @@
         const TODAY = new Date('2026-03-24T00:00:00'); 
 
         const INITIAL_PURCHASES = [
-            { id: 'PO-2026-001', processorName: 'Alex Reyes', prReceivedDate: '2026-02-25', date: '2026-03-01', expectedDelivery: '2026-03-10', receivedDate: '2026-03-09', vendor: 'TechCorp Supplies', description: 'Engineering Laptops', amount: 150000, status: 'Invoiced' },
-            { id: 'PO-2026-002', processorName: 'Maria Santos', prReceivedDate: '2026-02-10', date: '2026-02-15', expectedDelivery: '2026-02-25', receivedDate: '2026-02-26', vendor: 'OfficeWorld', description: 'Ergonomic Chairs', amount: 25000, status: 'Invoiced' },
-            { id: 'PO-2026-003', processorName: 'Juan Dela Cruz', prReceivedDate: '2026-03-15', date: '2026-03-20', expectedDelivery: '2026-04-05', receivedDate: null, vendor: 'Global Logistics', description: 'Q1 Shipping Retainer', amount: 8000, status: 'Pending' },
-            { id: 'PO-2026-004', processorName: 'Alex Reyes', prReceivedDate: '2025-12-28', date: '2026-01-05', expectedDelivery: '2026-01-20', receivedDate: '2026-01-18', vendor: 'OfficeWorld', description: 'Desks & Cabinets', amount: 45000, status: 'Invoiced' }
+            { id: 'PO-2026-001', businessUnit: 'ETMC', processorName: 'Alex Reyes', prReceivedDate: '2026-02-25', date: '2026-03-01', expectedDelivery: '2026-03-10', receivedDate: '2026-03-09', vendor: 'TechCorp Supplies', description: 'Engineering Laptops', amount: 150000, status: 'Invoiced' },
+            { id: 'PO-2026-002', businessUnit: 'EMI', processorName: 'Maria Santos', prReceivedDate: '2026-02-10', date: '2026-02-15', expectedDelivery: '2026-02-25', receivedDate: '2026-02-26', vendor: 'OfficeWorld', description: 'Ergonomic Chairs', amount: 25000, status: 'Invoiced' },
+            { id: 'PO-2026-003', businessUnit: 'EHI', processorName: 'Juan Dela Cruz', prReceivedDate: '2026-03-15', date: '2026-03-20', expectedDelivery: '2026-04-05', receivedDate: null, vendor: 'Global Logistics', description: 'Q1 Shipping Retainer', amount: 8000, status: 'Pending' },
+            { id: 'PO-2026-004', businessUnit: 'ETMC', processorName: 'Alex Reyes', prReceivedDate: '2025-12-28', date: '2026-01-05', expectedDelivery: '2026-01-20', receivedDate: '2026-01-18', vendor: 'OfficeWorld', description: 'Desks & Cabinets', amount: 45000, status: 'Invoiced' }
         ];
 
         const INITIAL_APVS = [
-            { id: 'APV-26-001', poId: 'PO-2026-001', vendor: 'TechCorp Supplies', invoiceDate: '2026-03-05', dueDate: '2026-04-04', amount: 150000, status: 'Unpaid', funded: true, settledDate: null }, 
-            { id: 'APV-26-002', poId: 'PO-2026-002', vendor: 'OfficeWorld', invoiceDate: '2026-02-16', dueDate: '2026-03-18', amount: 25000, status: 'Unpaid', funded: false, settledDate: null }, 
-            { id: 'APV-26-005', poId: 'PO-2026-004', vendor: 'OfficeWorld', invoiceDate: '2026-01-10', dueDate: '2026-02-09', amount: 45000, status: 'Unpaid', funded: false, settledDate: null }
+            { id: 'APV-26-001', poId: 'PO-2026-001', businessUnit: 'ETMC', vendor: 'TechCorp Supplies', invoiceDate: '2026-03-05', dueDate: '2026-04-04', amount: 150000, status: 'Unpaid', funded: true, settledDate: null }, 
+            { id: 'APV-26-002', poId: 'PO-2026-002', businessUnit: 'EMI', vendor: 'OfficeWorld', invoiceDate: '2026-02-16', dueDate: '2026-03-18', amount: 25000, status: 'Unpaid', funded: false, settledDate: null }, 
+            { id: 'APV-26-005', poId: 'PO-2026-004', businessUnit: 'ETMC', vendor: 'OfficeWorld', invoiceDate: '2026-01-10', dueDate: '2026-02-09', amount: 45000, status: 'Unpaid', funded: false, settledDate: null }
         ];
 
         // --- Helpers ---
@@ -217,6 +214,9 @@
             const [apvs, setApvs] = useState([]);
             const [isDataLoading, setIsDataLoading] = useState(true);
 
+            // Business Unit Filter
+            const [selectedBU, setSelectedBU] = useState('All');
+
             const [isAdmin, setIsAdmin] = useState(false);
             const [showAdminLogin, setShowAdminLogin] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
@@ -238,8 +238,8 @@
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
             
-            const [newPo, setNewPo] = useState({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
-            const [newApv, setNewApv] = useState({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
+            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
+            const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
 
@@ -320,9 +320,12 @@
                 return () => { unsubPurchases(); unsubApvs(); unsubSettings(); };
             }, [user]);
 
+            const filteredPurchases = useMemo(() => purchases.filter(p => selectedBU === 'All' || p.businessUnit === selectedBU), [purchases, selectedBU]);
+            const filteredApvs = useMemo(() => apvs.filter(a => selectedBU === 'All' || a.businessUnit === selectedBU), [apvs, selectedBU]);
+
             const { totalPurchases, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, vendorDeliveryRates, totalFundedUnpaid, totalReleasedThisWeek, weeklyNeedToPay, endOfWeek } = useMemo(() => {
-                let tPurchases = purchases.reduce((sum, p) => sum + Number(p.amount), 0);
-                let pDeliveries = purchases.filter(p => !p.receivedDate).length;
+                let tPurchases = filteredPurchases.reduce((sum, p) => sum + Number(p.amount), 0);
+                let pDeliveries = filteredPurchases.filter(p => !p.receivedDate).length;
                 let tOutstanding = 0;
                 
                 let tFundedUnpaid = 0;
@@ -334,7 +337,7 @@
                 let totalProcessingDays = 0, processedCount = 0, onTimeCount = 0, receivedCount = 0;
                 const vDelivery = {};
 
-                purchases.forEach(p => {
+                filteredPurchases.forEach(p => {
                     if (p.prReceivedDate && p.date) {
                         const diff = getDaysDiff(p.prReceivedDate, p.date);
                         if (diff !== null && diff >= 0) { totalProcessingDays += diff; processedCount++; }
@@ -351,7 +354,7 @@
                 const weeklyNeed = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0, total: 0 };
                 const vAging = {};
 
-                apvs.forEach(apv => {
+                filteredApvs.forEach(apv => {
                     const amt = Number(apv.amount || 0);
                     if (apv.status === 'Unpaid') {
                         tOutstanding += amt;
@@ -382,7 +385,7 @@
                     vendorDeliveryRates: Object.values(vDelivery).map(v => ({ ...v, onTimeRate: v.totalOrders > 0 ? ((v.onTime / v.totalOrders) * 100).toFixed(0) : 0 })).sort((a, b) => b.totalOrders - a.totalOrders),
                     totalFundedUnpaid: tFundedUnpaid, totalReleasedThisWeek: tReleasedThisWeek, weeklyNeedToPay: weeklyNeed, endOfWeek: endOfCurrentWeek
                 };
-            }, [purchases, apvs, weeklyFund]);
+            }, [filteredPurchases, filteredApvs, weeklyFund]);
 
             const toggleFunded = async (apv) => {
                 if (!user || !isAdmin) return;
@@ -405,9 +408,9 @@
                 setIsFundModalOpen(false);
             };
 
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
 
-            const openEditPo = (po) => { setEditingPoId(po.id); setNewPo({ ...po, receivedDate: po.receivedDate || '', amount: po.amount.toString() }); setIsPoModalOpen(true); };
+            const openEditPo = (po) => { setEditingPoId(po.id); setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', receivedDate: po.receivedDate || '', amount: po.amount.toString() }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault();
@@ -417,9 +420,9 @@
                 setIsPoModalOpen(false); setEditingPoId(null);
             };
 
-            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid' }); setIsApvModalOpen(true); };
+            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid' }); setIsApvModalOpen(true); };
 
-            const openEditApv = (apv) => { setEditingApvId(apv.id); setNewApv({ ...apv, amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0] }); setIsApvModalOpen(true); };
+            const openEditApv = (apv) => { setEditingApvId(apv.id); setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0] }); setIsApvModalOpen(true); };
 
             const handleAddApv = async (e) => {
                 e.preventDefault();
@@ -499,35 +502,7 @@
 
             // --- Sub-Renderers ---
             const renderDashboard = () => (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
-                    <div className="space-y-4 md:space-y-6">
-                        <h3 className="text-lg font-semibold text-gray-900 flex items-center"><Activity className="mr-2 text-indigo-500" size={20} /> Procurement Timeline</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                            <div className="p-4 md:p-5 rounded-xl bg-blue-50 border border-blue-100 flex items-center space-x-3 md:space-x-4">
-                                <div className="p-2 md:p-3 bg-blue-100 rounded-lg text-blue-600"><FileText size={20} className="md:w-6 md:h-6" /></div>
-                                <div><div className="text-xs text-blue-600 font-medium">Avg PR-to-PO</div><div className="text-lg md:text-xl font-bold text-blue-900">{avgProcessingTime} <span className="text-xs md:text-sm font-normal text-blue-700">Days</span></div></div>
-                            </div>
-                            <div className="p-4 md:p-5 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center space-x-3 md:space-x-4">
-                                <div className="p-2 md:p-3 bg-emerald-100 rounded-lg text-emerald-600"><CheckCircle size={20} className="md:w-6 md:h-6" /></div>
-                                <div><div className="text-xs text-emerald-600 font-medium">On-Time Delivery</div><div className="text-lg md:text-xl font-bold text-emerald-900">{onTimeRate}%</div></div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="px-4 py-3 md:px-5 md:py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><h3 className="text-sm font-semibold text-gray-900">Supplier Performance</h3></div>
-                            <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
-                                <table className="w-full text-left border-collapse min-w-[300px]">
-                                    <thead className="sticky top-0 bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500 z-10"><tr><th className="p-3 font-semibold">Supplier</th><th className="p-3 font-semibold text-center border-l border-gray-100">Delivered</th><th className="p-3 font-semibold text-center border-l border-gray-100">On-Time Rate</th></tr></thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {vendorDeliveryRates.filter(v => v.totalOrders > 0).length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-sm text-gray-500">No delivery data yet.</td></tr>) : vendorDeliveryRates.filter(v => v.totalOrders > 0).map((v, i) => (
-                                            <tr key={i} className="hover:bg-gray-50 transition-colors"><td className="p-3 font-medium text-xs text-gray-900">{v.name}</td><td className="p-3 text-xs text-center text-gray-600 border-l border-gray-50">{v.totalOrders}</td><td className="p-3 text-center border-l border-gray-50"><span className={`px-2 py-0.5 rounded text-[10px] font-medium inline-block ${v.onTimeRate >= 80 ? 'bg-emerald-100 text-emerald-700' : v.onTimeRate >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{v.onTimeRate}%</span></td></tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
+                <div className="grid grid-cols-1 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
                     <div className="space-y-4 md:space-y-6">
                         <h3 className="text-lg font-semibold text-gray-900 flex items-center pt-4 xl:pt-0"><LayoutDashboard className="mr-2 text-blue-500" size={20} /> Financial Overview</h3>
                         <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 md:p-6 rounded-xl shadow-md border border-slate-700 text-white relative overflow-hidden">
@@ -541,7 +516,7 @@
                             </div>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3 md:gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-blue-50 rounded-lg text-blue-600 self-start sm:self-auto"><ShoppingCart size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Purchases YTD</p><h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalPurchases)}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-indigo-50 rounded-lg text-indigo-600 self-start sm:self-auto"><Truck size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Pending Deliveries</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{pendingDeliveriesCount}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-rose-50 rounded-lg text-rose-600 self-start sm:self-auto"><DollarSign size={20} className="md:w-6 md:h-6"/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Outstanding APV</p><h3 className="text-sm md:text-xl font-bold text-gray-900 break-all">{formatCurrency(totalOutstanding)}</h3></div></div>
@@ -584,13 +559,13 @@
                     <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>{isAdmin && (<button onClick={openAddPo} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex items-center"><Plus size={16} className="mr-1 md:mr-2" /> Add PO</button>)}</div>
                     <div className="overflow-x-auto w-full">
                         <table className="w-full text-left border-collapse min-w-[700px]">
-                            <thead><tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500"><th className="p-3 md:p-4 font-semibold">PO Details</th><th className="p-3 md:p-4 font-semibold">Vendor & Description</th><th className="p-3 md:p-4 font-semibold">Delivery Timeline</th><th className="p-3 md:p-4 font-semibold text-center">Status</th><th className="p-3 md:p-4 font-semibold text-right">Amount</th>{isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}</tr></thead>
+                            <thead><tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500"><th className="p-3 md:p-4 font-semibold">PO Details</th><th className="p-3 md:p-4 font-semibold">Vendor & Item</th><th className="p-3 md:p-4 font-semibold">Delivery Timeline</th><th className="p-3 md:p-4 font-semibold text-center">Status</th><th className="p-3 md:p-4 font-semibold text-right">Amount</th>{isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-100">
-                                {purchases.length === 0 ? (<tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No Purchase Orders found.</td></tr>) : purchases.map((po) => {
+                                {filteredPurchases.length === 0 ? (<tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No Purchase Orders found.</td></tr>) : filteredPurchases.map((po) => {
                                     const deliveryStatus = getDeliveryStatus(po.expectedDelivery, po.receivedDate);
                                     return (
                                         <tr key={po.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
-                                            <td className="p-3 md:p-4"><div className="font-medium text-blue-600">{po.id}</div><div className="text-[10px] md:text-xs text-gray-500 mt-1 flex items-center"><FileText size={10} className="mr-1 text-gray-400"/> PR: {po.prReceivedDate || 'N/A'}</div><div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><CalendarDays size={10} className="mr-1 text-gray-400"/> PO: {po.date}</div><div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><User size={10} className="mr-1 text-gray-400"/> {po.processorName || 'Unassigned'}</div></td>
+                                            <td className="p-3 md:p-4"><div className="font-medium text-blue-600">{po.id}</div><span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 text-slate-600 border border-slate-200 mt-1 mb-1 inline-block uppercase">{po.businessUnit || 'General'}</span><div className="text-[10px] md:text-xs text-gray-500 flex items-center"><FileText size={10} className="mr-1 text-gray-400"/> PR: {po.prReceivedDate || 'N/A'}</div><div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><CalendarDays size={10} className="mr-1 text-gray-400"/> PO: {po.date}</div><div className="text-[10px] md:text-xs text-gray-500 mt-0.5 flex items-center"><User size={10} className="mr-1 text-gray-400"/> {po.processorName || 'Unassigned'}</div></td>
                                             <td className="p-3 md:p-4"><div className="text-gray-900 font-medium truncate max-w-[120px] md:max-w-xs">{po.vendor}</div><div className="text-[10px] md:text-xs text-gray-500 mt-1 truncate max-w-[120px] md:max-w-xs">{po.description}</div></td>
                                             <td className="p-3 md:p-4"><div className="text-[10px] md:text-xs space-y-1"><div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Expected:</span> <span className="text-gray-900">{po.expectedDelivery}</span></div><div className="flex justify-between w-28 md:w-36"><span className="text-gray-500">Received:</span> <span className={po.receivedDate ? "text-gray-900 font-medium" : "text-gray-400 italic"}>{po.receivedDate || "Pending"}</span></div></div></td>
                                             <td className="p-3 md:p-4 text-center"><span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] md:text-xs font-medium border block mb-1 ${deliveryStatus.color}`}>{deliveryStatus.label}</span><span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-[10px] font-medium block ${po.status === 'Invoiced' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>{po.status}</span></td>
@@ -612,11 +587,11 @@
                         <table className="w-full text-left border-collapse min-w-[750px]">
                             <thead><tr className="bg-white border-b border-gray-200 text-[10px] md:text-xs uppercase tracking-wider text-gray-500"><th className="p-3 md:p-4 font-semibold">APV Number</th><th className="p-3 md:p-4 font-semibold">Vendor & PO</th><th className="p-3 md:p-4 font-semibold">Due Date</th><th className="p-3 md:p-4 font-semibold text-right">Amount</th><th className="p-3 md:p-4 font-semibold text-center">Status</th>{isAdmin && <th className="p-3 md:p-4 font-semibold text-center">Action</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-100">
-                                {apvs.length === 0 ? (<tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No APV records found.</td></tr>) : apvs.map((apv) => {
+                                {filteredApvs.length === 0 ? (<tr><td colSpan={isAdmin ? "6" : "5"} className="p-8 text-center text-sm text-gray-500">No APV records found.</td></tr>) : filteredApvs.map((apv) => {
                                     const agingCat = getAgingCategory(apv.dueDate, apv.status);
                                     return (
                                         <tr key={apv.id} className="hover:bg-gray-50 transition-colors text-xs md:text-sm">
-                                            <td className="p-3 md:p-4 font-medium text-gray-900">{apv.id}</td>
+                                            <td className="p-3 md:p-4 font-medium text-gray-900"><div className="mb-1">{apv.id}</div><span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 text-slate-600 border border-slate-200 inline-block uppercase">{apv.businessUnit || 'General'}</span></td>
                                             <td className="p-3 md:p-4"><div className="font-medium flex items-center gap-2"><span className="text-gray-900 truncate max-w-[120px] md:max-w-xs">{apv.vendor}</span>{apv.paymentTerms === 'COD' && <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-[8px] font-black uppercase">COD</span>}</div><div className="text-blue-600 text-[10px] md:text-xs mt-0.5">{apv.poId}</div></td>
                                             <td className="p-3 md:p-4 text-gray-600">{apv.dueDate}</td>
                                             <td className="p-3 md:p-4 text-right font-medium text-gray-900">{formatCurrency(apv.amount)}</td>
@@ -698,8 +673,25 @@
 
                     <main className="flex-1 overflow-y-auto relative w-full flex flex-col">
                         <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-5 sticky top-0 z-10 flex justify-between items-center shadow-sm w-full">
-                            <div className="flex items-center min-w-0"><button className="md:hidden mr-3 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button><div className="truncate"><h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate">{activeTab === 'apvs' ? 'Accounts Payable' : activeTab.replace('-', ' ')}</h2><div className="flex items-center text-[10px] md:text-sm mt-0.5 md:mt-1 truncate">{isAdmin ? (<span className="text-emerald-600 flex items-center bg-emerald-50 px-1.5 py-0.5 rounded mr-2 border border-emerald-100 shrink-0"><Check size={10} className="mr-1" /> <span className="hidden xs:inline">Super User</span></span>) : (<span className="text-slate-600 flex items-center bg-slate-100 px-1.5 py-0.5 rounded mr-2 border border-slate-200 shrink-0"><Lock size={10} className="mr-1" /> <span className="hidden xs:inline">View-Only</span></span>)}<span className="text-gray-500 truncate hidden sm:inline">{isAdmin ? 'Full access to edit and manage records.' : 'Login as admin to edit records.'}</span></div></div></div>
-                            {activeTab === 'apvs' && (<div className="hidden lg:flex bg-orange-50 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium items-center border border-orange-100 shrink-0 ml-4"><AlertCircle size={16} className="mr-2" /> Review overdue accounts</div>)}
+                            <div className="flex items-center min-w-0">
+                                <button className="md:hidden mr-3 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button>
+                                <div className="truncate">
+                                    <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate">{activeTab === 'apvs' ? 'Accounts Payable' : activeTab.replace('-', ' ')}</h2>
+                                    <div className="flex items-center text-[10px] md:text-sm mt-0.5 md:mt-1 truncate">{isAdmin ? (<span className="text-emerald-600 flex items-center bg-emerald-50 px-1.5 py-0.5 rounded mr-2 border border-emerald-100 shrink-0"><Check size={10} className="mr-1" /> <span className="hidden xs:inline">Super User</span></span>) : (<span className="text-slate-600 flex items-center bg-slate-100 px-1.5 py-0.5 rounded mr-2 border border-slate-200 shrink-0"><Lock size={10} className="mr-1" /> <span className="hidden xs:inline">View-Only</span></span>)}<span className="text-gray-500 truncate hidden sm:inline">{isAdmin ? 'Full access to edit and manage records.' : 'Login as admin to edit records.'}</span></div>
+                                </div>
+                            </div>
+                            <div className="flex items-center space-x-3 ml-4">
+                                <div className="relative group">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Filter size={14} className="text-gray-400" /></div>
+                                    <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs md:text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-8 py-2 md:py-2.5 shadow-sm appearance-none outline-none hover:border-blue-400 transition-colors cursor-pointer">
+                                        <option value="All">All Business Units</option>
+                                        <option value="ETMC">ETMC</option>
+                                        <option value="EMI">EMI</option>
+                                        <option value="EHI">EHI</option>
+                                    </select>
+                                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none"><svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
+                                </div>
+                            </div>
                         </header>
                         
                         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1">
@@ -733,7 +725,10 @@
                                         <div><label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label><input required readOnly={!!editingApvId} type="text" value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editingApvId ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="e.g., APV-26-010" /></div>
                                         <div><label className="block text-xs font-medium text-gray-700 mb-1">PO Reference</label><input required type="text" value={newApv.poId} onChange={e => setNewApv({...newApv, poId: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., PO-2026-003" /></div>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Vendor Name" /></div></div>
+                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4">
+                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Vendor Name" /></div>
+                                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Business Unit</label><select required value={newApv.businessUnit} onChange={e => setNewApv({...newApv, businessUnit: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
+                                    </div>
                                     <div className="grid grid-cols-1 gap-3 md:gap-4">
                                         <div><label className="block text-xs font-medium text-gray-700 mb-1">Payment Terms</label><select required value={newApv.paymentTerms} onChange={e => setNewApv({...newApv, paymentTerms: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="Terms">Regular Terms (Pay Later)</option><option value="COD">COD (Cash on Delivery)</option></select></div>
                                     </div>
@@ -761,9 +756,9 @@
                                 <form onSubmit={handleAddPo} className="p-4 md:p-6 space-y-3 md:space-y-4 overflow-y-auto flex-1">
                                     <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">PO Number</label><input required readOnly={!!editingPoId} type="text" value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className={`w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editingPoId ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="e.g., PO-2026-006" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">PR Received Date</label><input required type="date" value={newPo.prReceivedDate} onChange={e => setNewPo({...newPo, prReceivedDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div>
                                     <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">PO Issue Date</label><input required type="date" value={newPo.date} onChange={e => setNewPo({...newPo, date: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery</label><input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div>
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">Actual Received Date <span className="text-gray-400 font-normal">(Optional)</span></label><input type="date" value={newPo.receivedDate} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Vendor Name" /></div></div>
+                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">Vendor</label><input required type="text" value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Vendor Name" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Business Unit</label><select required value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div></div>
                                     <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">Total Amount (₱)</label><input required type="number" min="0" step="0.01" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Purchasing Processor</label><input required type="text" value={newPo.processorName} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., Alex Reyes" /></div></div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Description / Items</label><input required type="text" value={newPo.description} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief description" /></div>
+                                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 md:gap-4"><div><label className="block text-xs font-medium text-gray-700 mb-1">Description / Items</label><input required type="text" value={newPo.description} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Brief description" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Actual Received Date <span className="text-gray-400 font-normal">(Optional)</span></label><input type="date" value={newPo.receivedDate} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div>
                                     <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsPoModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">Save</button></div>
                                 </form>
                             </div>
