@@ -87,7 +87,7 @@
         const Plus = safeIcon('Plus'); const Trash2 = safeIcon('Trash2'); const AlertTriangle = safeIcon('AlertTriangle');
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
-        const Upload = safeIcon('Upload'); const Download = safeIcon('Download');
+        const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search');
 
         // --- Firebase Initialization ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -194,7 +194,8 @@
 
         // Custom lightweight CSV Parser
         const parseCSV = (text) => {
-            const lines = text.split('\n').filter(line => line.trim() !== '');
+            // FIX: Use \r?\n to handle Windows carriage returns that corrupt CSV data matching
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
             
             const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
@@ -255,6 +256,10 @@
             const [selectedApvToPay, setSelectedApvToPay] = useState(null);
             const [settleDate, setSettleDate] = useState('');
 
+            // Search States
+            const [poSearchQuery, setPoSearchQuery] = useState('');
+            const [apvSearchQuery, setApvSearchQuery] = useState('');
+
             // Import States
             const [importType, setImportType] = useState('purchases');
             const [importFile, setImportFile] = useState(null);
@@ -308,8 +313,26 @@
                 return () => { unsubPurchases(); unsubApvs(); };
             }, [user]);
 
-            const filteredPurchases = useMemo(() => purchases.filter(p => selectedBU === 'All' || p.businessUnit === selectedBU), [purchases, selectedBU]);
-            const filteredApvs = useMemo(() => apvs.filter(a => selectedBU === 'All' || a.businessUnit === selectedBU), [apvs, selectedBU]);
+            const filteredPurchases = useMemo(() => {
+                return purchases.filter(p => {
+                    const matchBU = selectedBU === 'All' || p.businessUnit === selectedBU;
+                    const matchSearch = poSearchQuery === '' || 
+                                        (p.id && p.id.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
+                                        (p.vendor && p.vendor.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
+                                        (p.processorName && p.processorName.toLowerCase().includes(poSearchQuery.toLowerCase()));
+                    return matchBU && matchSearch;
+                });
+            }, [purchases, selectedBU, poSearchQuery]);
+
+            const filteredApvs = useMemo(() => {
+                return apvs.filter(a => {
+                    const matchBU = selectedBU === 'All' || a.businessUnit === selectedBU;
+                    const matchSearch = apvSearchQuery === '' || 
+                                        (a.id && a.id.toLowerCase().includes(apvSearchQuery.toLowerCase())) ||
+                                        (a.vendor && a.vendor.toLowerCase().includes(apvSearchQuery.toLowerCase()));
+                    return matchBU && matchSearch;
+                });
+            }, [apvs, selectedBU, apvSearchQuery]);
 
             const { totalPurchases, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
                 let tPurchases = filteredPurchases.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -475,15 +498,17 @@
                             // Data sanitization
                             item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0); // Remove currency symbols if any
                             
+                            // STRICT BUSINESS UNIT STANDARDIZATION (Fixes filtration issue)
+                            let cleanBU = (item.businessUnit || '').toUpperCase().trim();
+                            item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
+                            
                             if (importType === 'purchases') {
                                 item.status = item.receivedDate ? 'Invoiced' : 'Pending';
-                                item.businessUnit = item.businessUnit || 'ETMC';
                             } else {
                                 // APV mapping
                                 item.funded = String(item.funded).toLowerCase() === 'true' || item.status === 'Paid';
                                 item.status = item.status || 'Unpaid';
                                 item.paymentTerms = item.paymentTerms || 'Terms';
-                                item.businessUnit = item.businessUnit || 'ETMC';
                             }
                             
                             // Upload to Firestore
@@ -573,7 +598,16 @@
 
             const renderPurchases = () => (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
-                    <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>{isAdmin && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center"><Plus size={16} className="mr-1" /> Add PO</button>)}</div>
+                    <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
+                        <h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>
+                        <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
+                            <div className="relative w-full sm:w-64">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
+                                <input type="text" placeholder="Search PO, Vendor, or Purchaser..." value={poSearchQuery} onChange={e => setPoSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
+                            </div>
+                            {isAdmin && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
+                        </div>
+                    </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => (
@@ -597,7 +631,16 @@
 
             const renderAPVs = () => (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
-                    <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="text-base md:text-lg font-semibold text-gray-900">APV Records</h3>{isAdmin && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center"><Plus size={16} className="mr-1" /> Add APV</button>)}</div>
+                    <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
+                        <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Records</h3>
+                        <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
+                            <div className="relative w-full sm:w-64">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
+                                <input type="text" placeholder="Search APV # or Vendor..." value={apvSearchQuery} onChange={e => setApvSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
+                            </div>
+                            {isAdmin && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
+                        </div>
+                    </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & PO</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredApvs.map(apv => {
