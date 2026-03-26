@@ -110,7 +110,9 @@
         // --- Helpers ---
         const callGeminiAPI = async (prompt, userApiKey = "") => {
             const apiKey = userApiKey || "";
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            // Use the public model if a custom key is provided, otherwise use the Canvas internal model
+            const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
