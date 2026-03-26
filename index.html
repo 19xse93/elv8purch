@@ -87,7 +87,7 @@
         const Plus = safeIcon('Plus'); const Trash2 = safeIcon('Trash2'); const AlertTriangle = safeIcon('AlertTriangle');
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
-        const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Settings = safeIcon('Settings');
+        const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell');
 
         // --- Firebase Initialization ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -107,9 +107,12 @@
         const TODAY = new Date(); 
         TODAY.setHours(0,0,0,0);
 
+        // --- Permanent API Key ---
+        const PERMANENT_API_KEY = "AIzaSyAL27gax3G1dQk8XrjhdLJujMBIP8B4SNg";
+
         // --- Helpers ---
-        const callGeminiAPI = async (prompt, userApiKey = "") => {
-            const apiKey = userApiKey || "";
+        const callGeminiAPI = async (prompt) => {
+            const apiKey = PERMANENT_API_KEY || "";
             // Use the public model if a custom key is provided, otherwise use the Canvas internal model
             const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -144,7 +147,7 @@
                     retries--;
                     if (retries === 0) {
                         if (lastError.includes('403')) {
-                            return "Failed: API Key Required (HTTP 403).\n\nIt looks like you are running this dashboard locally or the automated proxy is restricted.\n\nPlease click the 'Settings' button in the bottom left sidebar and enter your own Gemini API Key to enable AI features.";
+                            return "Failed: API Key Required (HTTP 403).\n\nIt looks like you are running this dashboard locally or the automated proxy is restricted.\n\nPlease define your PERMANENT_API_KEY in the source code to enable AI features.";
                         }
                         return `Failed to generate AI content.\n\nDiagnostic Error: ${lastError}\n\nPlease try again in a moment.`;
                     }
@@ -294,10 +297,8 @@
             const [isClearModalOpen, setIsClearModalOpen] = useState(false);
             const [isClearing, setIsClearing] = useState(false);
             const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-            const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
             // Forms Data
-            const [customApiKey, setCustomApiKey] = useState('');
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
             const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
@@ -481,14 +482,14 @@
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\n1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}\n31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}\n61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
                 const prompt = `Write a professional internal memo/email to the Management or Finance Director summarizing our Accounts Payable Aging Report based on the following data:\n${dataSummary}\nProvide a brief overview and highlight the critical over-90-days amount. Keep it professional, concise, and under 150 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt, customApiKey);
+                const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const draftNoApvEmail = async (po) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const prompt = `Write a professional internal email to the purchasing processor (${po.processorName || 'Team'}) regarding Purchase Order ${po.id} for ${po.vendor}. The PO has been created and may already be received, but no Accounts Payable Voucher (APV) has been logged for it yet. Ask them to urgently process the APV so we can schedule the payment and avoid delays. Keep it under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt, customApiKey);
+                const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
@@ -496,14 +497,14 @@
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const expectedDate = new Date(po.expectedDelivery).toLocaleDateString();
                 const prompt = `Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed. Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt, customApiKey);
+                const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const draftPaymentNotification = async (apv) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully settled on ${apv.settledDate || 'the requested date'}. Keep it polite, professional, and under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt, customApiKey);
+                const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
@@ -511,7 +512,7 @@
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
                 const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt, customApiKey);
+                const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
@@ -616,7 +617,7 @@
             const generateInsights = async () => {
                 setIsGeneratingInsights(true);
                 const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
-                const result = await callGeminiAPI(`Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight.`, customApiKey);
+                const result = await callGeminiAPI(`Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight.`);
                 setInsights(result); setIsGeneratingInsights(false);
             };
 
@@ -883,8 +884,6 @@
                                 </>
                             )}
                             
-                            <button onClick={() => setIsSettingsModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-sm transition-colors"><Settings size={16} className="mr-2" /> Settings</button>
-                            
                             {accessLevel > 0 ? (
                                 <button onClick={() => setAccessLevel(0)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Lock Dashboard</button>
                             ) : (
@@ -917,33 +916,6 @@
                     </main>
 
                     {/* Modals */}
-                    {isSettingsModalOpen && (
-                        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                    <h3 className="font-semibold text-gray-900 flex items-center"><Settings size={18} className="mr-2 text-indigo-600"/> System Settings</h3>
-                                    <button onClick={() => setIsSettingsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-                                </div>
-                                <div className="p-6 space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Gemini API Key</label>
-                                        <input 
-                                            type="password" 
-                                            placeholder="AIzaSy..." 
-                                            value={customApiKey} 
-                                            onChange={e => setCustomApiKey(e.target.value)} 
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-                                        />
-                                        <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">Required only if you are running this file locally and receiving a HTTP 403 error during AI generation.</p>
-                                    </div>
-                                    <div className="pt-2 flex justify-end">
-                                        <button onClick={() => setIsSettingsModalOpen(false)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition-colors">Done</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                     {showAdminLogin && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
