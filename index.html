@@ -113,7 +113,6 @@
         // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
             const apiKey = PERMANENT_API_KEY || "";
-            // Use the public model if a custom key is provided, otherwise use the Canvas internal model
             const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             
@@ -159,31 +158,22 @@
 
         const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
-        // Safe Date Parser to prevent extreme anomalies (e.g., Excel serial dates or 4-digit typos)
         const safeParseDate = (dateStr) => {
             if (!dateStr) return null;
-            
-            // Check for Excel serial numeric dates (e.g., 45330 -> Feb 2024)
             if (!isNaN(dateStr) && !isNaN(parseFloat(dateStr))) {
                 const excelDays = parseFloat(dateStr);
-                if (excelDays > 20000 && excelDays < 90000) {
-                    return new Date((excelDays - 25569) * 86400 * 1000);
-                }
+                if (excelDays > 20000 && excelDays < 90000) return new Date((excelDays - 25569) * 86400 * 1000);
             }
-
             const d = new Date(dateStr);
             if (isNaN(d.getTime())) return null;
-            
-            // Sanity check to ignore wildly out-of-bounds dates
             if (d.getFullYear() < 2000 || d.getFullYear() > 2100) return null;
-            
             return d;
         };
 
         const getAgingCategory = (dueDate, status) => {
             if (status === 'Paid') return 'Paid';
             const due = safeParseDate(dueDate);
-            if (!due) return 'Current'; // Fallback for invalid dates
+            if (!due) return 'Current'; 
             
             const diffTime = TODAY - due;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -221,7 +211,6 @@
             const s = safeParseDate(startStr); 
             const e = safeParseDate(endStr);
             if (!s || !e) return null;
-            
             s.setHours(0,0,0,0); e.setHours(0,0,0,0);
             return Math.round((e - s) / (1000 * 60 * 60 * 24));
         };
@@ -241,13 +230,12 @@
             
             const diffTime = Math.ceil((TODAY - expected) / (1000 * 60 * 60 * 24));
             if (diffTime > 0) {
-                if (diffTime > 3650) return { label: 'Delayed', color: 'bg-rose-100 text-rose-800 border-rose-200' }; // Cap extreme display
+                if (diffTime > 3650) return { label: 'Delayed', color: 'bg-rose-100 text-rose-800 border-rose-200' };
                 return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
             }
             return { label: 'Pending Delivery', color: 'bg-blue-100 text-blue-800 border-blue-200' };
         };
 
-        // Custom lightweight CSV Parser
         const parseCSV = (text) => {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
@@ -278,7 +266,7 @@
             const [isDataLoading, setIsDataLoading] = useState(true);
 
             const [selectedBU, setSelectedBU] = useState('All');
-            const [accessLevel, setAccessLevel] = useState(0); // 0: View, 1: Edit PO, 2: Add PO/APV, 3: Super Admin
+            const [accessLevel, setAccessLevel] = useState(0); 
             const [showAdminLogin, setShowAdminLogin] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [adminError, setAdminError] = useState(false);
@@ -301,7 +289,7 @@
             // Forms Data
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
-            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' });
+            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', remarks: '' });
             const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
@@ -376,7 +364,8 @@
                     const matchSearch = poSearchQuery === '' || 
                                         (p.id && p.id.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
                                         (p.vendor && p.vendor.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
-                                        (p.processorName && p.processorName.toLowerCase().includes(poSearchQuery.toLowerCase()));
+                                        (p.processorName && p.processorName.toLowerCase().includes(poSearchQuery.toLowerCase())) ||
+                                        (p.remarks && p.remarks.toLowerCase().includes(poSearchQuery.toLowerCase()));
                     const matchStatus = poStatusFilter === 'All' || p.status === poStatusFilter;
                     return matchBU && matchSearch && matchStatus;
                 });
@@ -461,7 +450,7 @@
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', receivedDate: po.receivedDate || '', amount: po.amount.toString() }); 
+                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', receivedDate: po.receivedDate || '', amount: po.amount.toString(), remarks: po.remarks || '' }); 
                 setIsPoModalOpen(true); 
             };
 
@@ -496,7 +485,8 @@
             const draftDeliveryFollowUpEmail = async (po) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const expectedDate = new Date(po.expectedDelivery).toLocaleDateString();
-                const prompt = `Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed. Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
+                const notes = po.remarks ? ` Note: ${po.remarks}` : '';
+                const prompt = `Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed.${notes} Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
                 const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
@@ -516,7 +506,7 @@
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '' }); setIsPoModalOpen(true); };
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', remarks: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault();
@@ -582,22 +572,19 @@
                             if (!item.id) continue; // Skip rows without an ID
                             
                             // Data sanitization
-                            item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0); // Remove currency symbols if any
-                            
-                            // STRICT BUSINESS UNIT STANDARDIZATION
+                            item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0);
                             let cleanBU = (item.businessUnit || '').toUpperCase().trim();
                             item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
                             
                             if (importType === 'purchases') {
                                 item.status = item.receivedDate ? 'Invoiced' : 'Pending';
+                                item.remarks = item.remarks || ''; // Ensure remarks is set
                             } else {
-                                // APV mapping
                                 item.funded = String(item.funded).toLowerCase() === 'true' || item.status === 'Paid';
                                 item.status = item.status || 'Unpaid';
                                 item.paymentTerms = item.paymentTerms || 'Terms';
                             }
                             
-                            // Upload to Firestore
                             await dbRef.doc(item.id).set(item, { merge: true });
                             successCount++;
                         }
@@ -700,7 +687,7 @@
                         <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
                             <div className="relative w-full sm:w-56">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                                <input type="text" placeholder="Search PO, Vendor, or Purchaser..." value={poSearchQuery} onChange={e => setPoSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
+                                <input type="text" placeholder="Search PO, Vendor, or Remarks..." value={poSearchQuery} onChange={e => setPoSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
                             </div>
                             <div className="relative w-full sm:w-36">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Filter size={14} className="text-gray-400" /></div>
@@ -715,17 +702,18 @@
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4 w-1/4">PO Details</th><th className="p-4 w-1/3">Vendor & Remarks</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
                             const expDate = safeParseDate(po.expectedDelivery);
                             const isDelayed = !po.receivedDate && expDate && (expDate < TODAY);
                             
                             return (
-                            <tr key={po.id} className="hover:bg-gray-50 transition-colors">
+                            <tr key={po.id} className="hover:bg-gray-50 transition-colors align-top">
                                 <td className="p-4">
                                     <div className="font-bold text-blue-600">{po.id}</div>
                                     <div className="text-[10px] text-gray-400 uppercase font-black">{po.businessUnit}</div>
+                                    <div className="text-[10px] text-gray-500 mb-1.5 line-clamp-2" title={po.description}>{po.description}</div>
                                     <div className="text-[10px] text-gray-500 mb-1.5">PR Date: {po.prReceivedDate}</div>
                                     {linkedApv ? (
                                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 inline-flex items-center" title={`Linked APV: ${linkedApv.id}`}><Check size={10} className="mr-1"/> APV: {linkedApv.id}</span>
@@ -733,11 +721,18 @@
                                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200 inline-flex items-center" title="No APV created yet"><AlertCircle size={10} className="mr-1"/> No APV</span>
                                     )}
                                 </td>
-                                <td className="p-4 font-medium text-gray-900">{po.vendor}</td>
-                                <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
-                                <td className="p-4 text-right font-bold">{formatCurrency(po.amount)}</td>
+                                <td className="p-4">
+                                    <div className="font-medium text-gray-900">{po.vendor}</div>
+                                    {po.remarks && (
+                                        <div className="mt-1.5 p-2 bg-yellow-50 border border-yellow-100 rounded-lg text-[10px] text-yellow-800 italic break-words shadow-sm">
+                                            <span className="font-bold not-italic">Remarks:</span> {po.remarks}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border inline-block mt-1 ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
+                                <td className="p-4 text-right font-bold pt-5">{formatCurrency(po.amount)}</td>
                                 {accessLevel >= 1 && (
-                                    <td className="p-4 text-center space-x-2 whitespace-nowrap">
+                                    <td className="p-4 text-center space-x-2 whitespace-nowrap pt-5">
                                         <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
                                         {accessLevel >= 2 && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
                                         
@@ -946,7 +941,7 @@
                                         <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wide mb-1 flex items-center"><AlertCircle size={12} className="mr-1"/> Required CSV Headers</label>
                                         <p className="text-xs text-blue-700 font-mono break-all">
                                             {importType === 'purchases' 
-                                                ? "id, businessUnit, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, processorName" 
+                                                ? "id, businessUnit, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, processorName, remarks" 
                                                 : "id, poId, businessUnit, vendor, invoiceDate, dueDate, amount, paymentTerms, status, settledDate"}
                                         </p>
                                         <p className="text-[10px] text-blue-600 mt-1 italic">Note: Dates must be formatted as YYYY-MM-DD.</p>
@@ -1021,6 +1016,10 @@
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Processor</label><input required type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="e.g., Alex Reyes" /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Brief description" /></div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label>
+                                        <textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea>
                                     </div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Save PO</button></div>
                                 </form>
