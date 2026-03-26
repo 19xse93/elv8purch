@@ -156,9 +156,32 @@
 
         const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
+        // Safe Date Parser to prevent extreme anomalies (e.g., Excel serial dates or 4-digit typos)
+        const safeParseDate = (dateStr) => {
+            if (!dateStr) return null;
+            
+            // Check for Excel serial numeric dates (e.g., 45330 -> Feb 2024)
+            if (!isNaN(dateStr) && !isNaN(parseFloat(dateStr))) {
+                const excelDays = parseFloat(dateStr);
+                if (excelDays > 20000 && excelDays < 90000) {
+                    return new Date((excelDays - 25569) * 86400 * 1000);
+                }
+            }
+
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return null;
+            
+            // Sanity check to ignore wildly out-of-bounds dates
+            if (d.getFullYear() < 2000 || d.getFullYear() > 2100) return null;
+            
+            return d;
+        };
+
         const getAgingCategory = (dueDate, status) => {
             if (status === 'Paid') return 'Paid';
-            const due = new Date(dueDate);
+            const due = safeParseDate(dueDate);
+            if (!due) return 'Current'; // Fallback for invalid dates
+            
             const diffTime = TODAY - due;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays <= 0) return 'Current';
@@ -192,23 +215,32 @@
         };
 
         const getDaysDiff = (startStr, endStr) => {
-            if (!startStr || !endStr) return null;
-            const s = new Date(startStr); const e = new Date(endStr);
+            const s = safeParseDate(startStr); 
+            const e = safeParseDate(endStr);
+            if (!s || !e) return null;
+            
             s.setHours(0,0,0,0); e.setHours(0,0,0,0);
             return Math.round((e - s) / (1000 * 60 * 60 * 24));
         };
 
         const getDeliveryStatus = (expectedDelivery, receivedDate) => {
+            const expected = safeParseDate(expectedDelivery);
+            if (!expected) return { label: 'Invalid Date', color: 'bg-rose-100 text-rose-800 border-rose-200' };
+
             if (receivedDate) {
-                const expected = new Date(expectedDelivery);
-                const received = new Date(receivedDate);
-                return received <= expected 
-                ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } 
-                : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+                const received = safeParseDate(receivedDate);
+                if (received) {
+                    return received <= expected 
+                    ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } 
+                    : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+                }
             }
-            const expected = new Date(expectedDelivery);
+            
             const diffTime = Math.ceil((TODAY - expected) / (1000 * 60 * 60 * 24));
-            if (diffTime > 0) return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
+            if (diffTime > 0) {
+                if (diffTime > 3650) return { label: 'Delayed', color: 'bg-rose-100 text-rose-800 border-rose-200' }; // Cap extreme display
+                return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
+            }
             return { label: 'Pending Delivery', color: 'bg-blue-100 text-blue-800 border-blue-200' };
         };
 
@@ -397,7 +429,7 @@
                         const category = getAgingCategory(apv.dueDate, apv.status);
                         if (summary[category] !== undefined) summary[category] += amt;
                         
-                        const dueDateObj = new Date(apv.dueDate);
+                        const dueDateObj = safeParseDate(apv.dueDate) || new Date();
                         if (dueDateObj <= endOfCurrentWeek) {
                             if (weeklyNeed[category] !== undefined) weeklyNeed[category] += amt;
                             weeklyNeed.total += amt;
@@ -685,7 +717,8 @@
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
-                            const isDelayed = !po.receivedDate && (new Date(po.expectedDelivery) < TODAY);
+                            const expDate = safeParseDate(po.expectedDelivery);
+                            const isDelayed = !po.receivedDate && expDate && (expDate < TODAY);
                             
                             return (
                             <tr key={po.id} className="hover:bg-gray-50 transition-colors">
