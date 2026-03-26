@@ -111,23 +111,36 @@
         const callGeminiAPI = async (prompt) => {
             const apiKey = "";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            // Enhanced payload: Merged system instruction into prompt to prevent strict API validation errors
             const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] }
+                contents: [{ parts: [{ text: "System Context: You are an expert financial analyst and accounts payable manager.\n\nTask: " + prompt }] }]
             };
 
             let retries = 5;
             let delay = 1000;
+            let lastError = "";
 
             while (retries > 0) {
                 try {
                     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                    
+                    if (!response.ok) {
+                        let errMessage = `HTTP ${response.status}`;
+                        try {
+                            const errData = await response.json();
+                            if (errData.error && errData.error.message) errMessage += ` - ${errData.error.message}`;
+                        } catch (e) {}
+                        throw new Error(errMessage);
+                    }
+                    
                     const data = await response.json();
                     return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
                 } catch (error) {
+                    console.error("AI Generation Error:", error);
+                    lastError = error.message;
                     retries--;
-                    if (retries === 0) return "Failed to generate AI content.";
+                    if (retries === 0) return `Failed to generate AI content.\n\nDiagnostic Error: ${lastError}\n\nPlease try again in a moment.`;
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay *= 2;
                 }
