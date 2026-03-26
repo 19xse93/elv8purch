@@ -87,7 +87,7 @@
         const Plus = safeIcon('Plus'); const Trash2 = safeIcon('Trash2'); const AlertTriangle = safeIcon('AlertTriangle');
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
-        const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search');
+        const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell');
 
         // --- Firebase Initialization ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -194,7 +194,6 @@
 
         // Custom lightweight CSV Parser
         const parseCSV = (text) => {
-            // FIX: Use \r?\n to handle Windows carriage returns that corrupt CSV data matching
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
             
@@ -202,7 +201,6 @@
             const result = [];
             
             for (let i = 1; i < lines.length; i++) {
-                // Regex handles commas inside quotes: "Like, This"
                 const currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
                 const obj = {};
                 for (let j = 0; j < headers.length; j++) {
@@ -418,15 +416,39 @@
                 setIsReceiveModalOpen(true); 
             };
 
+            // AI Email Drafting Functions
+            const draftAgingReportEmail = async () => {
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\n1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}\n31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}\n61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
+                const prompt = `Write a professional internal memo/email to the Management or Finance Director summarizing our Accounts Payable Aging Report based on the following data:\n${dataSummary}\nProvide a brief overview and highlight the critical over-90-days amount. Keep it professional, concise, and under 150 words. Do not include a subject line.`;
+                const result = await callGeminiAPI(prompt);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
+
+            const draftNoApvEmail = async (po) => {
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const prompt = `Write a professional internal email to the purchasing processor (${po.processorName || 'Purchasing Team'}) regarding Purchase Order ${po.id} for ${po.vendor}. The PO has been created and may already be received, but no Accounts Payable Voucher (APV) has been logged for it yet. Ask them to urgently process the APV so we can schedule the payment and avoid delays. Keep it under 100 words. Do not include a subject line.`;
+                const result = await callGeminiAPI(prompt);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
+
+            const draftDeliveryFollowUpEmail = async (po) => {
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const expectedDate = new Date(po.expectedDelivery).toLocaleDateString();
+                const prompt = `Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed. Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line.`;
+                const result = await callGeminiAPI(prompt);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
+
             const draftPaymentNotification = async (apv) => {
-                setSelectedVendor(apv.vendor); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully settled on ${apv.settledDate || 'the requested date'}. Keep it polite, professional, and under 100 words. Do not include a subject line.`;
                 const result = await callGeminiAPI(prompt);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const draftVendorEmail = async (vendorData) => {
-                setSelectedVendor(vendorData.name); setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
                 const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body.`;
                 const result = await callGeminiAPI(prompt);
@@ -498,7 +520,7 @@
                             // Data sanitization
                             item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0); // Remove currency symbols if any
                             
-                            // STRICT BUSINESS UNIT STANDARDIZATION (Fixes filtration issue)
+                            // STRICT BUSINESS UNIT STANDARDIZATION
                             let cleanBU = (item.businessUnit || '').toUpperCase().trim();
                             item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
                             
@@ -612,6 +634,8 @@
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
+                            const isDelayed = !po.receivedDate && (new Date(po.expectedDelivery) < TODAY);
+                            
                             return (
                             <tr key={po.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="p-4">
@@ -631,6 +655,15 @@
                                     <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                         <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
                                         {!po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
+                                        
+                                        {/* Warning Email Triggers */}
+                                        {isDelayed && (
+                                            <button onClick={() => draftDeliveryFollowUpEmail(po)} className="text-rose-400 hover:text-rose-600 transition-colors" title="Draft Delivery Follow-up"><Bell size={16} /></button>
+                                        )}
+                                        {!linkedApv && (
+                                            <button onClick={() => draftNoApvEmail(po)} className="text-amber-500 hover:text-amber-600 transition-colors" title="Follow up Missing APV"><AlertCircle size={16} /></button>
+                                        )}
+                                        
                                         <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>
                                     </td>
                                 )}
@@ -682,7 +715,15 @@
 
             const renderAgingReport = () => (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500 relative">
-                    <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50"><h3 className="text-base md:text-lg font-semibold text-gray-900">APV Aging Summary Report</h3><p className="text-xs md:text-sm text-gray-500 mt-1">As of {TODAY.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p></div>
+                    <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between md:items-center gap-3">
+                        <div>
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Aging Summary Report</h3>
+                            <p className="text-xs md:text-sm text-gray-500 mt-1">As of {TODAY.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                        </div>
+                        <button onClick={draftAgingReportEmail} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center w-full md:w-auto hover:bg-indigo-700 transition-colors">
+                            <Mail size={16} className="mr-2" /> Draft Report Email
+                        </button>
+                    </div>
                     <div className="p-4 md:p-6 border-b border-gray-100 bg-slate-50">
                         <h4 className="text-xs md:text-sm font-semibold text-gray-900 mb-3 md:mb-4 flex items-center"><AlertCircle size={16} className="mr-2 text-indigo-600 shrink-0" /><span>Weekly Requirements <span className="hidden sm:inline">(Due by {endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span></span></h4>
                         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
