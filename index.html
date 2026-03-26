@@ -241,7 +241,7 @@
             const [isDataLoading, setIsDataLoading] = useState(true);
 
             const [selectedBU, setSelectedBU] = useState('All');
-            const [isAdmin, setIsAdmin] = useState(false);
+            const [accessLevel, setAccessLevel] = useState(0); // 0: View, 1: Edit PO, 2: Add PO/APV, 3: Super Admin
             const [showAdminLogin, setShowAdminLogin] = useState(false);
             const [adminPassword, setAdminPassword] = useState('');
             const [adminError, setAdminError] = useState(false);
@@ -413,7 +413,7 @@
 
             const handlePayApv = async (e) => {
                 e.preventDefault();
-                if (!user || !isAdmin || !selectedApvToPay) return;
+                if (!user || accessLevel < 3 || !selectedApvToPay) return;
                 await getDbRef().collection('apvs').doc(selectedApvToPay.id).update({ status: 'Paid', settledDate: settleDate });
                 setIsPayApvModalOpen(false); setSelectedApvToPay(null); setSettleDate('');
             };
@@ -479,7 +479,10 @@
 
             const handleAddPo = async (e) => {
                 e.preventDefault();
-                if (!user || !isAdmin) return;
+                if (!user) return;
+                if (editingPoId && accessLevel < 1) return; // Need Level 1 to edit
+                if (!editingPoId && accessLevel < 2) return; // Need Level 2 to add
+
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
                 await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), status: poStatus, receivedDate: newPo.receivedDate || null });
                 setIsPoModalOpen(false); setEditingPoId(null);
@@ -489,24 +492,24 @@
 
             const handleAddApv = async (e) => {
                 e.preventDefault();
-                if (!user || !isAdmin) return;
+                if (!user || accessLevel < 2) return; // Level 2 required to add/edit APVs
                 const isPaid = newApv.status === 'Paid';
                 await getDbRef().collection('apvs').doc(newApv.id).set({ ...newApv, amount: Number(newApv.amount), status: newApv.status, funded: isPaid ? true : (editingApvId ? (apvs.find(a => a.id === editingApvId)?.funded || false) : false), settledDate: isPaid ? newApv.settledDate : null });
                 setIsApvModalOpen(false); setEditingApvId(null);
             };
 
-            const handleDeletePo = async (id) => { if (user && isAdmin) await getDbRef().collection('purchases').doc(id).delete(); };
-            const handleDeleteApv = async (id) => { if (user && isAdmin) await getDbRef().collection('apvs').doc(id).delete(); };
+            const handleDeletePo = async (id) => { if (user && accessLevel === 3) await getDbRef().collection('purchases').doc(id).delete(); };
+            const handleDeleteApv = async (id) => { if (user && accessLevel === 3) await getDbRef().collection('apvs').doc(id).delete(); };
 
             const handleReceivePo = async (e) => {
                 e.preventDefault();
-                if (!user || !selectedPo || !isAdmin) return;
+                if (!user || !selectedPo || accessLevel < 2) return;
                 await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' });
                 setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate('');
             };
 
             const handleClearAllData = async () => {
-                if (!user || !isAdmin) return;
+                if (!user || accessLevel !== 3) return;
                 setIsClearing(true);
                 const dbRef = getDbRef();
                 const pSnap = await dbRef.collection('purchases').get();
@@ -519,7 +522,7 @@
             // --- Import Logic ---
             const handleImportSubmit = async (e) => {
                 e.preventDefault();
-                if (!user || !isAdmin || !importFile) return;
+                if (!user || accessLevel !== 3 || !importFile) return;
 
                 setImportingStatus('Parsing CSV file...');
                 const reader = new FileReader();
@@ -586,11 +589,22 @@
 
             const handleAdminLoginSubmit = (e) => {
                 e.preventDefault();
-                if (adminPassword === 'admin123') { setIsAdmin(true); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                if (adminPassword === 'level1') { setAccessLevel(1); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                else if (adminPassword === 'level2') { setAccessLevel(2); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                else if (adminPassword === 'admin123') { setAccessLevel(3); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
                 else { setAdminError(true); }
             };
 
             const handleTabSwitch = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); };
+
+            const renderHeaderBadge = () => {
+                switch(accessLevel) {
+                    case 3: return <span className="text-emerald-600 flex items-center bg-emerald-50 px-2 py-0.5 rounded mr-2 border border-emerald-200 shrink-0"><Check size={12} className="mr-1" /> Super User</span>;
+                    case 2: return <span className="text-indigo-600 flex items-center bg-indigo-50 px-2 py-0.5 rounded mr-2 border border-indigo-200 shrink-0"><User size={12} className="mr-1" /> Level 2 Access</span>;
+                    case 1: return <span className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded mr-2 border border-blue-200 shrink-0"><User size={12} className="mr-1" /> Level 1 Access</span>;
+                    default: return <span className="text-slate-500 flex items-center bg-slate-100 px-2 py-0.5 rounded mr-2 border border-slate-200 shrink-0"><Lock size={12} className="mr-1" /> View Only</span>;
+                }
+            };
 
             if (isDataLoading) {
                 return (
@@ -647,11 +661,11 @@
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
                                 <input type="text" placeholder="Search PO, Vendor, or Purchaser..." value={poSearchQuery} onChange={e => setPoSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
                             </div>
-                            {isAdmin && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
+                            {accessLevel >= 2 && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">PO Details</th><th className="p-4">Vendor</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
                             const isDelayed = !po.receivedDate && (new Date(po.expectedDelivery) < TODAY);
@@ -671,20 +685,20 @@
                                 <td className="p-4 font-medium text-gray-900">{po.vendor}</td>
                                 <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
                                 <td className="p-4 text-right font-bold">{formatCurrency(po.amount)}</td>
-                                {isAdmin && (
+                                {accessLevel >= 1 && (
                                     <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                         <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
-                                        {!po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
+                                        {accessLevel >= 2 && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
                                         
                                         {/* Warning Email Triggers */}
-                                        {isDelayed && (
+                                        {accessLevel >= 2 && isDelayed && (
                                             <button onClick={() => draftDeliveryFollowUpEmail(po)} className="text-rose-400 hover:text-rose-600 transition-colors" title="Draft Delivery Follow-up"><Bell size={16} /></button>
                                         )}
-                                        {!linkedApv && (
+                                        {accessLevel >= 2 && !linkedApv && (
                                             <button onClick={() => draftNoApvEmail(po)} className="text-amber-500 hover:text-amber-600 transition-colors" title="Follow up Missing APV"><AlertCircle size={16} /></button>
                                         )}
                                         
-                                        <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>
+                                        {accessLevel === 3 && <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>}
                                     </td>
                                 )}
                             </tr>
@@ -702,11 +716,11 @@
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
                                 <input type="text" placeholder="Search APV # or Vendor..." value={apvSearchQuery} onChange={e => setApvSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
                             </div>
-                            {isAdmin && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
+                            {accessLevel >= 2 && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & PO</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{isAdmin && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & PO</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{accessLevel >= 2 && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{filteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredApvs.map(apv => {
                             const aging = getAgingCategory(apv.dueDate, apv.status);
                             return (
@@ -715,15 +729,19 @@
                                     <td className="p-4"><div className="font-medium">{apv.vendor}</div><div className="text-[10px] text-blue-500">{apv.poId}</div></td>
                                     <td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td>
                                     <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>
-                                    {isAdmin && (
+                                    {accessLevel >= 2 && (
                                         <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                             <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
-                                            {apv.status === 'Unpaid' ? (
-                                                <button onClick={() => openPayModal(apv)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 transition-colors text-white">Pay</button>
-                                            ) : (
-                                                <button onClick={() => draftPaymentNotification(apv)} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-bold transition-colors">Notify</button>
+                                            
+                                            {accessLevel === 3 && (
+                                                apv.status === 'Unpaid' ? (
+                                                    <button onClick={() => openPayModal(apv)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 transition-colors text-white">Pay</button>
+                                                ) : (
+                                                    <button onClick={() => draftPaymentNotification(apv)} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-bold transition-colors">Notify</button>
+                                                )
                                             )}
-                                            <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>
+                                            
+                                            {accessLevel === 3 && <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>}
                                         </td>
                                     )}
                                 </tr>
@@ -799,18 +817,19 @@
                             <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
                         </nav>
                         <div className="p-6 bg-slate-950 mt-auto">
-                            {isAdmin ? (
+                            {accessLevel === 3 && (
                                 <>
                                     <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 rounded-lg text-sm transition-colors"><Download size={16} className="mr-2" /> Import Data (CSV)</button>
                                     <button onClick={() => setIsClearModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-red-900/50 hover:text-red-400 text-slate-400 rounded-lg text-sm transition-colors"><Trash2 size={16} className="mr-2" /> Clear All Data</button>
-                                    <button onClick={() => setIsSettingsModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-sm transition-colors"><Settings size={16} className="mr-2" /> Settings</button>
-                                    <button onClick={() => setIsAdmin(false)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> View Only</button>
                                 </>
+                            )}
+                            
+                            <button onClick={() => setIsSettingsModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-sm transition-colors"><Settings size={16} className="mr-2" /> Settings</button>
+                            
+                            {accessLevel > 0 ? (
+                                <button onClick={() => setAccessLevel(0)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Lock Dashboard</button>
                             ) : (
-                                <>
-                                    <button onClick={() => setIsSettingsModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-sm transition-colors"><Settings size={16} className="mr-2" /> Settings</button>
-                                    <button onClick={() => setShowAdminLogin(true)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-indigo-600 rounded-lg text-sm text-white font-bold tracking-tight">Admin Login</button>
-                                </>
+                                <button onClick={() => setShowAdminLogin(true)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-indigo-600 rounded-lg text-sm text-white font-bold tracking-tight">Admin Login</button>
                             )}
                             <div className="text-xs text-slate-500 uppercase font-semibold mb-1">System Date</div>
                             <div className="text-sm font-medium text-slate-300 flex items-center truncate"><Calendar size={14} className="mr-2"/> {TODAY.toLocaleDateString()}</div>
@@ -821,11 +840,14 @@
                         <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-5 sticky top-0 z-10 flex justify-between items-center shadow-sm">
                             <div className="flex items-center">
                                 <button className="md:hidden mr-3" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button>
-                                <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize">{activeTab}</h2>
+                                <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate hidden xs:block">{activeTab}</h2>
                             </div>
-                            <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="bg-white border border-gray-300 text-xs md:text-sm font-medium rounded-lg p-2 outline-none">
-                                <option value="All">All Business Units</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
-                            </select>
+                            <div className="flex items-center space-x-2 md:space-x-4">
+                                {renderHeaderBadge()}
+                                <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none">
+                                    <option value="All">All Business Units</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
+                                </select>
+                            </div>
                         </header>
                         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1">
                             {activeTab === 'dashboard' && renderDashboard()}
@@ -866,8 +888,10 @@
                     {showAdminLogin && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-                                <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Super User Login</h3>
-                                <input type="password" autoFocus placeholder="Passcode (try admin123)" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
+                                <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Authorization Login</h3>
+                                <p className="text-xs text-gray-500">Enter your assigned passcode to elevate your access permissions.</p>
+                                
+                                <input type="password" autoFocus placeholder="Passcode" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
                                 <div className="flex justify-end space-x-3"><button onClick={() => setShowAdminLogin(false)} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button onClick={handleAdminLoginSubmit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">Login</button></div>
                             </div>
                         </div>
