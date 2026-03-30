@@ -6,34 +6,27 @@
     <title>ProcureMonitor | APV Aging Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FIX: Mask injected module loaders -->
+    <!-- FIX: Mask injected module loaders to prevent Netlify conflicts -->
     <script>
-        window.__define = window.define;
-        window.__exports = window.exports;
-        window.__module = window.module;
-        window.define = undefined;
-        window.exports = undefined;
-        window.module = undefined;
+        window.__define = window.define; window.__exports = window.exports; window.__module = window.module;
+        window.define = undefined; window.exports = undefined; window.module = undefined;
     </script>
 
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Vanilla Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
-    <!-- Restore module loaders -->
-    <script>
-        window.define = window.__define;
-        window.exports = window.__exports;
-        window.module = window.__module;
-    </script>
-
-    <!-- Babel & Firebase -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Reliable Enterprise CDNs to prevent network blocks -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+    
+    <!-- Firebase core components -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <!-- Restore module loaders -->
+    <script>
+        window.define = window.__define; window.exports = window.__exports; window.module = window.__module;
+    </script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
@@ -42,7 +35,9 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white;}
+        /* Fallback CSS if React fatally unmounts */
+        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white; flex-direction: column;}
+        #root:empty::after { content: "Application Error. React failed to mount. Check console."; color: #ef4444; font-family: monospace; font-size: 1rem; margin-top: 1rem;}
     </style>
 </head>
 <body>
@@ -56,6 +51,16 @@
         </div>
     </div>
 
+    <!-- Global Error Catcher -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            document.getElementById('root').innerHTML = '<div style="background:#fee2e2; color:#991b1b; padding:2rem; min-height:100vh; font-family:sans-serif;">' +
+                '<h1 style="font-size:1.5rem; font-weight:bold; margin-bottom:1rem;">Fatal Global Error</h1>' +
+                '<p>The dashboard scripts failed to load correctly.</p><p><strong>Error:</strong> ' + msg + '</p>' +
+                '<pre style="background:#fecaca; padding:1rem; margin-top:1rem; overflow-x:auto;">' + (error ? error.stack : 'No stack trace') + '</pre></div>';
+        };
+    </script>
+
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
         
@@ -64,15 +69,17 @@
             return ({ size = 24, className = '' }) => {
                 const iconRef = useRef(null);
                 useEffect(() => {
-                    if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
-                        iconRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
-                        window.lucide.createIcons({
-                            icons: { [iconName]: window.lucide.icons[iconName] },
-                            nameAttr: 'data-lucide',
-                            attrs: { width: size, height: size, class: className },
-                            root: iconRef.current
-                        });
-                    }
+                    try {
+                        if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
+                            iconRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
+                            window.lucide.createIcons({
+                                icons: { [iconName]: window.lucide.icons[iconName] },
+                                nameAttr: 'data-lucide',
+                                attrs: { width: size, height: size, class: className },
+                                root: iconRef.current
+                            });
+                        }
+                    } catch (e) { console.warn("Icon load error", e); }
                 }, [size, className]);
                 return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
             };
@@ -90,9 +97,10 @@
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
         const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer');
 
-        // --- Firebase Initialization ---
-        // UPDATE THESE VALUES WITH YOUR OWN FIREBASE CONFIG FOR NETLIFY DEPLOYMENTS
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+        // =========================================================================
+        // NETLIFY CONFIGURATION - UPDATE THIS WITH YOUR OWN FIREBASE CREDENTIALS
+        // =========================================================================
+        const customNetlifyConfig = {
             apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
             authDomain: "elev8-be0f4.firebaseapp.com",
             projectId: "elev8-be0f4",
@@ -100,16 +108,23 @@
             messagingSenderId: "939507136986",
             appId: "1:939507136986:web:8a8d417cbbc80921eda8e3"
         };
+        // =========================================================================
+
+        let firebaseConfig = customNetlifyConfig;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try { firebaseConfig = JSON.parse(__firebase_config); } catch(e) {}
+        }
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-procurement-app-v2';
         
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+        } catch (e) { console.error("Firebase init global error:", e); }
 
         const TODAY = new Date(); 
         TODAY.setHours(0,0,0,0);
 
-        // --- Permanent API Key ---
         const PERMANENT_API_KEY = "AIzaSyAL27gax3G1dQk8XrjhdLJujMBIP8B4SNg";
 
         // --- Helpers ---
@@ -117,48 +132,16 @@
             const apiKey = PERMANENT_API_KEY || "";
             const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-            
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] }
-            };
-
-            let retries = 5;
-            let delay = 1000;
-            let lastError = "";
-
-            while (retries > 0) {
-                try {
-                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    
-                    if (!response.ok) {
-                        let errMessage = `HTTP ${response.status}`;
-                        try {
-                            const errData = await response.json();
-                            if (errData.error && errData.error.message) errMessage += ` - ${errData.error.message}`;
-                        } catch (e) {}
-                        throw new Error(errMessage);
-                    }
-                    
-                    const data = await response.json();
-                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-                } catch (error) {
-                    console.error("AI Generation Error:", error);
-                    lastError = error.message;
-                    retries--;
-                    if (retries === 0) {
-                        if (lastError.includes('403')) {
-                            return "Failed: API Key Required (HTTP 403).\n\nIt looks like you are running this dashboard locally or the automated proxy is restricted.\n\nPlease define your PERMANENT_API_KEY in the source code to enable AI features.";
-                        }
-                        return `Failed to generate AI content.\n\nDiagnostic Error: ${lastError}\n\nPlease try again in a moment.`;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2;
-                }
-            }
+            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } };
+            try {
+                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) return `HTTP Error ${response.status}`;
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+            } catch (error) { return `Failed to connect to AI: ${error.message}`; }
         };
 
-        const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+        const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount || 0);
 
         const safeParseDate = (dateStr) => {
             if (!dateStr) return null;
@@ -176,7 +159,6 @@
             if (status === 'Paid') return 'Paid';
             const due = safeParseDate(dueDate);
             if (!due) return 'Current'; 
-            
             const diffTime = TODAY - due;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays <= 0) return 'Current';
@@ -213,16 +195,13 @@
             const d = safeParseDate(dateStr) || new Date();
             const day = d.getDay();
             const diffToMonday = day === 0 ? -6 : 1 - day;
-            const start = new Date(d);
-            start.setDate(d.getDate() + diffToMonday);
-            const end = new Date(start);
-            end.setDate(start.getDate() + 4); // Friday
+            const start = new Date(d); start.setDate(d.getDate() + diffToMonday);
+            const end = new Date(start); end.setDate(start.getDate() + 4);
             return `${start.toLocaleDateString('en-US', {month:'short', day:'numeric'})} - ${end.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})}`;
         };
 
         const getDaysDiff = (startStr, endStr) => {
-            const s = safeParseDate(startStr); 
-            const e = safeParseDate(endStr);
+            const s = safeParseDate(startStr); const e = safeParseDate(endStr);
             if (!s || !e) return null;
             s.setHours(0,0,0,0); e.setHours(0,0,0,0);
             return Math.round((e - s) / (1000 * 60 * 60 * 24));
@@ -231,31 +210,20 @@
         const getDeliveryStatus = (expectedDelivery, receivedDate) => {
             const expected = safeParseDate(expectedDelivery);
             if (!expected) return { label: 'Invalid Date', color: 'bg-rose-100 text-rose-800 border-rose-200' };
-
             if (receivedDate) {
                 const received = safeParseDate(receivedDate);
-                if (received) {
-                    return received <= expected 
-                    ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } 
-                    : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
-                }
+                if (received) return received <= expected ? { label: 'Received', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' } : { label: 'Received (Late)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
             }
-            
             const diffTime = Math.ceil((TODAY - expected) / (1000 * 60 * 60 * 24));
-            if (diffTime > 0) {
-                if (diffTime > 3650) return { label: 'Delayed', color: 'bg-rose-100 text-rose-800 border-rose-200' };
-                return { label: `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
-            }
+            if (diffTime > 0) return { label: diffTime > 3650 ? 'Delayed' : `Delayed (${diffTime} days)`, color: 'bg-rose-100 text-rose-800 border-rose-200' };
             return { label: 'Pending Delivery', color: 'bg-blue-100 text-blue-800 border-blue-200' };
         };
 
         const parseCSV = (text) => {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
-            
             const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
             const result = [];
-            
             for (let i = 1; i < lines.length; i++) {
                 const currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
                 const obj = {};
@@ -268,6 +236,31 @@
             return result;
         };
 
+        // --- Error Boundary ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+            static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            componentDidCatch(error, errorInfo) { this.setState({ errorInfo }); }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="p-8 bg-red-50 text-red-900 h-screen font-sans flex flex-col justify-center max-w-4xl mx-auto">
+                            <h1 className="text-3xl font-bold mb-4 flex items-center"><AlertTriangle className="mr-3 text-red-600" size={32} /> UI Rendering Crash</h1>
+                            <p className="mb-4 text-lg">The dashboard encountered a fatal rendering error. This usually means a variable was accessed incorrectly.</p>
+                            <div className="bg-red-100 p-6 rounded-lg overflow-auto border border-red-300 shadow-inner">
+                                <p className="font-bold text-red-700">{this.state.error && this.state.error.toString()}</p>
+                                <pre className="mt-4 text-red-900 text-xs font-mono">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
         // --- App Component ---
         function App() {
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -277,9 +270,9 @@
             const [purchases, setPurchases] = useState([]);
             const [apvs, setApvs] = useState([]);
             const [isDataLoading, setIsDataLoading] = useState(true);
-            const [dbError, setDbError] = useState(false); // Track DB connection errors
+            const [dbError, setDbError] = useState(false);
+            const [dbErrorMessage, setDbErrorMessage] = useState("");
 
-            // Global Unified Filters
             const [globalSearchQuery, setGlobalSearchQuery] = useState('');
             const [selectedBU, setSelectedBU] = useState('All');
             const [selectedCategory, setSelectedCategory] = useState('All');
@@ -304,21 +297,14 @@
             const [isClearModalOpen, setIsClearModalOpen] = useState(false);
             const [isClearing, setIsClearing] = useState(false);
             const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-
-            // Super User Delete Check Data Modal
             const [isResetFundingModalOpen, setIsResetFundingModalOpen] = useState(false);
             const [apvToReset, setApvToReset] = useState(null);
-
-            // Funding Date Modal States
             const [isFundModalOpen, setIsFundModalOpen] = useState(false);
             const [fundData, setFundData] = useState({ apvId: '', fundDate: '' });
-
-            // Treasury / Check Modal States
             const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
             const [checkApvId, setCheckApvId] = useState('');
             const [checkData, setCheckData] = useState({ checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
 
-            // Forms Data
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
             const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' });
@@ -326,77 +312,100 @@
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
 
-            // View Specific Filters
             const [poStatusFilter, setPoStatusFilter] = useState('All');
             const [apvStatusFilter, setApvStatusFilter] = useState('All');
-
-            // Import States
             const [importType, setImportType] = useState('purchases');
             const [importFile, setImportFile] = useState(null);
             const [importingStatus, setImportingStatus] = useState('');
 
-            const getDbRef = () => firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data');
+            const getDbRef = () => {
+                try { return firebase.firestore().collection('artifacts').doc(appId).collection('public').doc('data'); }
+                catch(e) { throw new Error("Firestore mapping failed."); }
+            };
 
             useEffect(() => {
                 let unsubscribe = () => {};
                 const initAuth = async () => {
                     try {
-                        let currentUser = firebase.auth().currentUser;
+                        const auth = firebase.auth();
+                        let currentUser = auth.currentUser;
                         if (!currentUser) {
                             if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                                const cred = await firebase.auth().signInWithCustomToken(window.__initial_auth_token);
+                                const cred = await auth.signInWithCustomToken(window.__initial_auth_token);
                                 currentUser = cred.user;
                             } else {
-                                const cred = await firebase.auth().signInAnonymously();
+                                const cred = await auth.signInAnonymously();
                                 currentUser = cred.user;
                             }
                         }
                     } catch (error) { 
-                        console.error("Auth failed:", error); 
+                        console.error("Firebase Auth failed:", error); 
                         setDbError(true);
-                        setIsDataLoading(false); // Stop loading if auth fails
+                        setDbErrorMessage(`Authentication failed. Make sure Anonymous Auth is enabled in Firebase. (${error.message})`);
+                        setIsDataLoading(false);
                     }
                 };
-                initAuth().then(() => {
-                    unsubscribe = firebase.auth().onAuthStateChanged((u) => {
-                        setUser(u);
-                        if (!u) {
-                            setDbError(true);
-                            setIsDataLoading(false); // Stop loading if auth listener returns null
-                        }
+                
+                try {
+                    initAuth().then(() => {
+                        unsubscribe = firebase.auth().onAuthStateChanged((u) => {
+                            setUser(u);
+                            if (!u && !dbError) {
+                                setDbError(true);
+                                setDbErrorMessage("Auth listener returned null. Session disconnected.");
+                                setIsDataLoading(false);
+                            }
+                        });
+                    }).catch(e => {
+                        setDbError(true); setDbErrorMessage(e.message); setIsDataLoading(false);
                     });
-                });
+                } catch(e) {
+                    setDbError(true); setDbErrorMessage("Firebase SDK not loaded."); setIsDataLoading(false);
+                }
+                
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
                 if (!user) return;
-                const dbRef = getDbRef();
+                let unsubPurchases = () => {};
+                let unsubApvs = () => {};
                 
-                const unsubPurchases = dbRef.collection('purchases').onSnapshot(
-                    (snapshot) => {
-                        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                    },
-                    (error) => {
-                        console.warn("Firestore listener error (purchases):", error);
-                        setDbError(true);
-                        setIsDataLoading(false); // Stop infinite loading
-                    }
-                );
+                try {
+                    const dbRef = getDbRef();
+                    
+                    unsubPurchases = dbRef.collection('purchases').onSnapshot(
+                        (snapshot) => {
+                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
+                        },
+                        (error) => {
+                            console.warn("Firestore listener error (purchases):", error);
+                            setDbError(true);
+                            setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
+                            setIsDataLoading(false);
+                        }
+                    );
 
-                const unsubApvs = dbRef.collection('apvs').onSnapshot(
-                    (snapshot) => {
-                        const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                        setIsDataLoading(false);
-                    },
-                    (error) => {
-                        console.warn("Firestore listener error (apvs):", error);
-                        setDbError(true);
-                        setIsDataLoading(false); // Stop infinite loading
-                    }
-                );
+                    unsubApvs = dbRef.collection('apvs').onSnapshot(
+                        (snapshot) => {
+                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
+                            setIsDataLoading(false);
+                        },
+                        (error) => {
+                            console.warn("Firestore listener error (apvs):", error);
+                            setDbError(true);
+                            setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
+                            setIsDataLoading(false);
+                        }
+                    );
+                } catch (error) {
+                    console.error("Critical Firebase Error in useEffect:", error);
+                    setDbError(true);
+                    setDbErrorMessage(error.message);
+                    setIsDataLoading(false);
+                }
 
                 return () => { unsubPurchases(); unsubApvs(); };
             }, [user]);
@@ -426,7 +435,6 @@
                 return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
             };
 
-            // --- Unified Filtering Logic ---
             const baseFilteredPurchases = useMemo(() => {
                 const query = globalSearchQuery.toLowerCase();
                 return purchases.filter(p => {
@@ -439,10 +447,7 @@
                         (p.processorName && String(p.processorName).toLowerCase().includes(query)) ||
                         (p.prRequestor && String(p.prRequestor).toLowerCase().includes(query)) ||
                         (p.remarks && String(p.remarks).toLowerCase().includes(query)) ||
-                        apvs.some(a => a.poId === p.id && (
-                            (a.id && String(a.id).toLowerCase().includes(query)) ||
-                            (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query))
-                        ));
+                        apvs.some(a => a.poId === p.id && ((a.id && String(a.id).toLowerCase().includes(query)) || (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query))));
                     return matchBU && matchCat && matchMonth && matchSearch;
                 });
             }, [purchases, apvs, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
@@ -453,18 +458,13 @@
                     const matchBU = selectedBU === 'All' || a.businessUnit === selectedBU;
                     const matchCat = selectedCategory === 'All' || getItemCategory(a) === selectedCategory;
                     const matchMonth = selectedMonth === 'All' || (a.invoiceDate && a.invoiceDate.startsWith(selectedMonth));
-                    
                     const linkedPo = purchases.find(p => p.id === a.poId);
                     const matchSearch = query === '' || 
                         (a.id && String(a.id).toLowerCase().includes(query)) ||
                         (a.poId && String(a.poId).toLowerCase().includes(query)) ||
                         (a.vendor && String(a.vendor).toLowerCase().includes(query)) ||
                         (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query)) ||
-                        (linkedPo && (
-                            (linkedPo.remarks && String(linkedPo.remarks).toLowerCase().includes(query)) ||
-                            (linkedPo.processorName && String(linkedPo.processorName).toLowerCase().includes(query)) ||
-                            (linkedPo.prRequestor && String(linkedPo.prRequestor).toLowerCase().includes(query))
-                        ));
+                        (linkedPo && ((linkedPo.remarks && String(linkedPo.remarks).toLowerCase().includes(query)) || (linkedPo.processorName && String(linkedPo.processorName).toLowerCase().includes(query)) || (linkedPo.prRequestor && String(linkedPo.prRequestor).toLowerCase().includes(query))));
                     return matchBU && matchCat && matchMonth && matchSearch;
                 });
             }, [apvs, purchases, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
@@ -472,12 +472,8 @@
             const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
             const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
 
-
             const { totalPurchases, totalSavings, slowestVendor, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
-                let tPurchases = 0;
-                let tSavings = 0;
-                let pDeliveries = 0;
-                let tOutstanding = 0;
+                let tPurchases = 0; let tSavings = 0; let pDeliveries = 0; let tOutstanding = 0;
                 
                 const currentDay = TODAY.getDay();
                 const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
@@ -492,11 +488,8 @@
                 const vendorLeadTimes = {};
 
                 baseFilteredPurchases.forEach(p => {
-                    tPurchases += Number(p.amount || 0);
-                    tSavings += Number(p.discountAmount || 0);
-                    
+                    tPurchases += Number(p.amount || 0); tSavings += Number(p.discountAmount || 0);
                     if (!p.receivedDate) pDeliveries++;
-
                     if (p.prReceivedDate && p.date) {
                         const diff = getDaysDiff(p.prReceivedDate, p.date);
                         if (diff !== null && diff >= 0) { totalProcessingDays += diff; processedCount++; }
@@ -506,21 +499,17 @@
                         const diff = getDaysDiff(p.expectedDelivery, p.receivedDate);
                         if (diff !== null && diff <= 0) { onTimeCount++; }
                     }
-
                     if (p.receivedDate) {
                         let startDate = p.date;
                         if (p.paymentTerms === 'COD') {
                             const linkedApv = apvs.find(a => a.poId === p.id);
-                            if (linkedApv && linkedApv.settledDate) {
-                                startDate = linkedApv.settledDate;
-                            }
+                            if (linkedApv && linkedApv.settledDate) startDate = linkedApv.settledDate;
                         }
                         if (startDate) {
                             const diff = getDaysDiff(startDate, p.receivedDate);
                             if (diff !== null) {
                                 if (!vendorLeadTimes[p.vendor]) vendorLeadTimes[p.vendor] = { totalDays: 0, count: 0 };
-                                vendorLeadTimes[p.vendor].totalDays += diff;
-                                vendorLeadTimes[p.vendor].count++;
+                                vendorLeadTimes[p.vendor].totalDays += diff; vendorLeadTimes[p.vendor].count++;
                             }
                         }
                     }
@@ -529,9 +518,7 @@
                 let sVendor = { name: 'Evaluating Data...', avgDays: 0 };
                 Object.keys(vendorLeadTimes).forEach(v => {
                     const avg = vendorLeadTimes[v].totalDays / vendorLeadTimes[v].count;
-                    if (avg > sVendor.avgDays) {
-                        sVendor = { name: v, avgDays: avg };
-                    }
+                    if (avg > sVendor.avgDays) sVendor = { name: v, avgDays: avg };
                 });
                 if (Object.keys(vendorLeadTimes).length === 0) sVendor.name = 'No deliveries recorded yet.';
 
@@ -567,99 +554,48 @@
                 };
             }, [baseFilteredPurchases, baseFilteredApvs]);
 
-            const openFundModal = (apv = null) => {
-                setFundData({ apvId: apv ? apv.id : '', fundDate: TODAY.toISOString().split('T')[0] });
-                setIsFundModalOpen(true);
-            };
-
+            const openFundModal = (apv = null) => { setFundData({ apvId: apv ? apv.id : '', fundDate: TODAY.toISOString().split('T')[0] }); setIsFundModalOpen(true); };
             const handleFundSubmit = async (e) => {
-                e.preventDefault();
-                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
-                const targetApv = apvs.find(a => a.id === fundData.apvId);
-                if (!targetApv) return;
-                const updates = { funded: true, fundedDate: fundData.fundDate };
-                await getDbRef().collection('apvs').doc(targetApv.id).update(updates);
-                setIsFundModalOpen(false);
+                e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                const targetApv = apvs.find(a => a.id === fundData.apvId); if (!targetApv) return;
+                try { await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); setIsFundModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleUnfund = async (apv) => {
                 if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
-                await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null });
+                try { await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openCheckModal = (apv = null) => {
                 setCheckApvId(apv ? apv.id : '');
-                setCheckData({
-                    checkNumber: apv ? (apv.checkNumber || '') : '',
-                    checkDate: apv ? (apv.checkDate || TODAY.toISOString().split('T')[0]) : TODAY.toISOString().split('T')[0],
-                    releaseDate: apv ? (apv.releaseDate || TODAY.toISOString().split('T')[0]) : TODAY.toISOString().split('T')[0],
-                    checkStatus: apv ? (apv.checkStatus || 'Pending Check') : 'Pending Check'
-                });
+                setCheckData({ checkNumber: apv?.checkNumber || '', checkDate: apv?.checkDate || TODAY.toISOString().split('T')[0], releaseDate: apv?.releaseDate || TODAY.toISOString().split('T')[0], checkStatus: apv?.checkStatus || 'Pending Check' });
                 setIsCheckModalOpen(true);
             };
 
             const handleCheckApvChange = (e) => {
-                const val = e.target.value;
-                setCheckApvId(val);
+                const val = e.target.value; setCheckApvId(val);
                 const apv = apvs.find(a => a.id === val);
-                if (apv) {
-                    setCheckData({
-                        checkNumber: apv.checkNumber || '',
-                        checkDate: apv.checkDate || TODAY.toISOString().split('T')[0],
-                        releaseDate: apv.releaseDate || TODAY.toISOString().split('T')[0],
-                        checkStatus: apv.checkStatus || 'Pending Check'
-                    });
-                }
+                if (apv) setCheckData({ checkNumber: apv.checkNumber || '', checkDate: apv.checkDate || TODAY.toISOString().split('T')[0], releaseDate: apv.releaseDate || TODAY.toISOString().split('T')[0], checkStatus: apv.checkStatus || 'Pending Check' });
             };
 
             const handleSaveCheck = async (e) => {
-                e.preventDefault();
-                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
-                const targetApv = apvs.find(a => a.id === checkApvId);
-                if (!targetApv) return;
-                
+                e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                const targetApv = apvs.find(a => a.id === checkApvId); if (!targetApv) return;
                 const isCollected = checkData.checkStatus === 'Collected';
-                const updates = {
-                    checkNumber: checkData.checkNumber,
-                    checkDate: checkData.checkDate,
-                    releaseDate: isCollected ? checkData.releaseDate : null,
-                    checkStatus: checkData.checkStatus,
-                    status: isCollected ? 'Paid' : 'Unpaid',
-                    settledDate: isCollected ? checkData.releaseDate : null,
-                    funded: true
-                };
-                
-                await getDbRef().collection('apvs').doc(targetApv.id).update(updates);
-                setIsCheckModalOpen(false);
+                const updates = { checkNumber: checkData.checkNumber, checkDate: checkData.checkDate, releaseDate: isCollected ? checkData.releaseDate : null, checkStatus: checkData.checkStatus, status: isCollected ? 'Paid' : 'Unpaid', settledDate: isCollected ? checkData.releaseDate : null, funded: true };
+                try { await getDbRef().collection('apvs').doc(targetApv.id).update(updates); setIsCheckModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const confirmResetFunding = (apv) => {
-                setApvToReset(apv);
-                setIsResetFundingModalOpen(true);
-            };
-
+            const confirmResetFunding = (apv) => { setApvToReset(apv); setIsResetFundingModalOpen(true); };
             const executeResetFunding = async () => {
                 if (!user || accessLevel !== 3 || !apvToReset) return;
                 const updates = { funded: false, fundedDate: null, checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check', status: 'Unpaid', settledDate: null };
-                await getDbRef().collection('apvs').doc(apvToReset.id).update(updates);
-                setIsResetFundingModalOpen(false);
-                setApvToReset(null);
+                try { await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); setIsResetFundingModalOpen(false); setApvToReset(null); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ 
-                    ...po, 
-                    businessUnit: po.businessUnit || 'ETMC', 
-                    category: po.category || 'General', 
-                    prRequestor: po.prRequestor || '',
-                    receivedDate: po.receivedDate || '', 
-                    amount: po.amount.toString(), 
-                    grossAmount: (po.grossAmount || po.amount || '').toString(),
-                    discountAmount: (po.discountAmount || '').toString(),
-                    paymentTerms: po.paymentTerms || 'Terms',
-                    remarks: po.remarks || '' 
-                }); 
+                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'General', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '' }); 
                 setIsPoModalOpen(true); 
             };
 
@@ -669,24 +605,18 @@
                 setIsApvModalOpen(true); 
             };
 
-            const openReceiveModal = (po) => { 
-                setSelectedPo(po); 
-                setReceiveDate(TODAY.toISOString().split('T')[0]); 
-                setIsReceiveModalOpen(true); 
-            };
+            const openReceiveModal = (po) => { setSelectedPo(po); setReceiveDate(TODAY.toISOString().split('T')[0]); setIsReceiveModalOpen(true); };
 
             const draftAgingReportEmail = async () => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\n1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}\n31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}\n61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
-                const prompt = `Write a professional internal memo/email to the Management or Finance Director summarizing our Accounts Payable Aging Report based on the following data:\n${dataSummary}\nProvide a brief overview and highlight the critical over-90-days amount. Keep it professional, concise, and under 150 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt);
+                const result = await callGeminiAPI(`Write a professional internal memo/email to the Management or Finance Director summarizing our Accounts Payable Aging Report based on the following data:\n${dataSummary}\nProvide a brief overview and highlight the critical over-90-days amount. Keep it professional, concise, and under 150 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const draftNoApvEmail = async (po) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const prompt = `Write a professional internal email to the purchasing processor (${po.processorName || 'Team'}) regarding Purchase Order ${po.id} for ${po.vendor}. The PO has been created and may already be received, but no Accounts Payable Voucher (APV) has been logged for it yet. Ask them to urgently process the APV so we can schedule the payment and avoid delays. Keep it under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt);
+                const result = await callGeminiAPI(`Write a professional internal email to the purchasing processor (${po.processorName || 'Team'}) regarding Purchase Order ${po.id} for ${po.vendor}. The PO has been created and may already be received, but no Accounts Payable Voucher (APV) has been logged for it yet. Ask them to urgently process the APV so we can schedule the payment and avoid delays. Keep it under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
@@ -694,117 +624,81 @@
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const expectedDate = new Date(po.expectedDelivery).toLocaleDateString();
                 const notes = po.remarks ? ` Note: ${po.remarks}` : '';
-                const prompt = `Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed.${notes} Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const draftPaymentNotification = async (apv) => {
-                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const prompt = `Write a professional payment advice email to ${apv.vendor}. Inform them that the payment for APV reference ${apv.id} (PO Ref: ${apv.poId}) amounting to ${formatCurrency(apv.amount)} has been successfully settled on ${apv.settledDate || 'the requested date'}. Keep it polite, professional, and under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt);
+                const result = await callGeminiAPI(`Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed.${notes} Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const draftVendorEmail = async (vendorData) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
-                const prompt = `Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body. Sign the email as the Purchasing Team.`;
-                const result = await callGeminiAPI(prompt);
+                const result = await callGeminiAPI(`Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body. Sign the email as the Purchasing Team.`);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
             const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
-                e.preventDefault();
-                if (!user) return;
-                if (accessLevel === 4) return; 
-                if (editingPoId && accessLevel < 1) return; 
-                if (!editingPoId && accessLevel < 2) return; 
-
+                e.preventDefault(); if (!user) return;
+                if (accessLevel === 4) return; if (editingPoId && accessLevel < 1) return; if (!editingPoId && accessLevel < 2) return; 
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
-                
-                await getDbRef().collection('purchases').doc(newPo.id).set({ 
-                    ...newPo, 
-                    amount: Number(newPo.amount), 
-                    grossAmount: Number(newPo.grossAmount || newPo.amount),
-                    discountAmount: Number(newPo.discountAmount || 0),
-                    status: poStatus, 
-                    receivedDate: newPo.receivedDate || null 
-                });
-                setIsPoModalOpen(false); setEditingPoId(null);
+                try {
+                    await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null });
+                    setIsPoModalOpen(false); setEditingPoId(null);
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' }); setIsApvModalOpen(true); };
 
             const handleAddApv = async (e) => {
-                e.preventDefault();
-                if (!user || accessLevel < 2 || accessLevel === 4) return; 
+                e.preventDefault(); if (!user || accessLevel < 2 || accessLevel === 4) return; 
                 const isPaid = newApv.status === 'Paid';
                 const baseApv = { ...newApv, amount: Number(newApv.amount), status: newApv.status, settledDate: isPaid ? newApv.settledDate : null };
-                
-                if (isPaid) {
-                    baseApv.funded = true;
-                    if (!baseApv.fundedDate) baseApv.fundedDate = baseApv.settledDate || TODAY.toISOString().split('T')[0];
-                }
+                if (isPaid) { baseApv.funded = true; if (!baseApv.fundedDate) baseApv.fundedDate = baseApv.settledDate || TODAY.toISOString().split('T')[0]; }
                 if (editingApvId) {
                     const existing = apvs.find(a => a.id === editingApvId);
                     if (existing) {
-                        baseApv.funded = isPaid ? true : existing.funded;
-                        baseApv.fundedDate = isPaid ? (existing.fundedDate || baseApv.fundedDate) : existing.fundedDate;
-                        baseApv.checkNumber = existing.checkNumber || '';
-                        baseApv.checkDate = existing.checkDate || '';
-                        baseApv.releaseDate = existing.releaseDate || '';
-                        baseApv.checkStatus = existing.checkStatus || 'Pending Check';
+                        baseApv.funded = isPaid ? true : existing.funded; baseApv.fundedDate = isPaid ? (existing.fundedDate || baseApv.fundedDate) : existing.fundedDate;
+                        baseApv.checkNumber = existing.checkNumber || ''; baseApv.checkDate = existing.checkDate || ''; baseApv.releaseDate = existing.releaseDate || ''; baseApv.checkStatus = existing.checkStatus || 'Pending Check';
                     }
                 }
-                
-                await getDbRef().collection('apvs').doc(newApv.id).set(baseApv);
-                setIsApvModalOpen(false); setEditingApvId(null);
+                try { await getDbRef().collection('apvs').doc(newApv.id).set(baseApv); setIsApvModalOpen(false); setEditingApvId(null); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const handleDeletePo = async (id) => { if (user && accessLevel === 3) await getDbRef().collection('purchases').doc(id).delete(); };
-            const handleDeleteApv = async (id) => { if (user && accessLevel === 3) await getDbRef().collection('apvs').doc(id).delete(); };
+            const handleDeletePo = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('purchases').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
+            const handleDeleteApv = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('apvs').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
 
             const handleReceivePo = async (e) => {
-                e.preventDefault();
-                if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
-                await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' });
-                setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate('');
+                e.preventDefault(); if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
+                try { await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate(''); } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleClearAllData = async () => {
                 if (!user || accessLevel !== 3) return;
                 setIsClearing(true);
-                const dbRef = getDbRef();
-                const pSnap = await dbRef.collection('purchases').get();
-                for (const doc of pSnap.docs) await doc.ref.delete();
-                const aSnap = await dbRef.collection('apvs').get();
-                for (const doc of aSnap.docs) await doc.ref.delete();
+                try {
+                    const dbRef = getDbRef();
+                    const pSnap = await dbRef.collection('purchases').get();
+                    for (const doc of pSnap.docs) await doc.ref.delete();
+                    const aSnap = await dbRef.collection('apvs').get();
+                    for (const doc of aSnap.docs) await doc.ref.delete();
+                } catch(err) { alert("Clear Data Failed: " + err.message); }
                 setIsClearing(false); setIsClearModalOpen(false);
             };
 
             const handleImportSubmit = async (e) => {
-                e.preventDefault();
-                if (!user || accessLevel !== 3 || !importFile) return;
-
+                e.preventDefault(); if (!user || accessLevel !== 3 || !importFile) return;
                 setImportingStatus('Parsing CSV file...');
                 const reader = new FileReader();
                 reader.onload = async (event) => {
                     try {
-                        const text = event.target.result;
-                        const parsedData = parseCSV(text);
-                        
+                        const text = event.target.result; const parsedData = parseCSV(text);
                         if (parsedData.length === 0) throw new Error("File is empty or incorrectly formatted.");
                         setImportingStatus(`Uploading ${parsedData.length} records. Please wait...`);
                         
                         const dbRef = getDbRef().collection(importType);
-                        
                         let successCount = 0;
                         for (let item of parsedData) {
                             if (!item.id) continue; 
-                            
                             item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0);
                             let cleanBU = (item.businessUnit || '').toUpperCase().trim();
                             item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
@@ -813,34 +707,20 @@
                             if (importType === 'purchases') {
                                 item.grossAmount = Number(item.grossAmount?.replace(/[^0-9.-]+/g,"") || item.amount);
                                 item.discountAmount = Number(item.discountAmount?.replace(/[^0-9.-]+/g,"") || 0);
-                                item.paymentTerms = item.paymentTerms || 'Terms';
-                                item.status = item.receivedDate ? 'Invoiced' : 'Pending';
-                                item.remarks = item.remarks || ''; 
-                                item.prRequestor = item.prRequestor || ''; 
+                                item.paymentTerms = item.paymentTerms || 'Terms'; item.status = item.receivedDate ? 'Invoiced' : 'Pending';
+                                item.remarks = item.remarks || ''; item.prRequestor = item.prRequestor || ''; 
                             } else {
                                 item.funded = String(item.funded).toLowerCase() === 'true' || item.status === 'Paid';
-                                if (item.funded && !item.fundedDate) {
-                                    item.fundedDate = item.settledDate || TODAY.toISOString().split('T')[0];
-                                }
-                                item.status = item.status || 'Unpaid';
-                                item.paymentTerms = item.paymentTerms || 'Terms';
-                                item.checkNumber = item.checkNumber || '';
-                                item.checkDate = item.checkDate || '';
-                                item.releaseDate = item.releaseDate || '';
-                                item.checkStatus = item.checkStatus || 'Pending Check';
+                                if (item.funded && !item.fundedDate) item.fundedDate = item.settledDate || TODAY.toISOString().split('T')[0];
+                                item.status = item.status || 'Unpaid'; item.paymentTerms = item.paymentTerms || 'Terms';
+                                item.checkNumber = item.checkNumber || ''; item.checkDate = item.checkDate || ''; item.releaseDate = item.releaseDate || ''; item.checkStatus = item.checkStatus || 'Pending Check';
                             }
-                            
                             await dbRef.doc(item.id).set(item, { merge: true });
                             successCount++;
                         }
-                        
                         setImportingStatus(`Success! Uploaded ${successCount} records.`);
                         setTimeout(() => { setIsImportModalOpen(false); setImportFile(null); setImportingStatus(''); }, 2000);
-
-                    } catch (error) {
-                        console.error(error);
-                        setImportingStatus('Error formatting CSV. Ensure columns match exactly.');
-                    }
+                    } catch (error) { console.error(error); setImportingStatus('Error formatting CSV. Ensure columns match exactly.'); }
                 };
                 reader.onerror = () => setImportingStatus('Failed to read file.');
                 reader.readAsText(importFile);
@@ -881,7 +761,7 @@
                 }
             };
 
-            if (isDataLoading) {
+            if (isDataLoading && !dbError) {
                 return (
                 <div className="flex h-screen items-center justify-center bg-gray-50 flex-col px-4 text-center">
                     <Loader2 size={48} className="animate-spin text-blue-600 mb-4" />
@@ -894,11 +774,17 @@
             const renderDashboard = () => (
                 <div className="grid grid-cols-1 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
                     {dbError && (
-                        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start mt-4 xl:mt-0">
-                            <AlertTriangle className="mr-3 shrink-0 mt-0.5" size={20} />
+                        <div className="bg-red-50 border border-red-200 text-red-800 p-4 md:p-6 rounded-xl flex items-start mt-4 xl:mt-0 shadow-sm animate-in fade-in">
+                            <AlertTriangle className="mr-3 shrink-0 mt-0.5 text-red-600" size={24} />
                             <div>
-                                <h3 className="font-bold">Database Connection Error</h3>
-                                <p className="text-sm mt-1">The dashboard failed to authenticate or connect to Firebase. If you deployed this app, please ensure you updated the Firebase Config in the source code and enabled Anonymous Authentication in your Firebase Console.</p>
+                                <h3 className="font-bold text-base md:text-lg mb-1">Database Connection Error</h3>
+                                <p className="text-xs md:text-sm mt-1 text-red-700">The dashboard could not authenticate or fetch data from Firebase. If you deployed this app to Netlify, you MUST:</p>
+                                <ol className="list-decimal list-inside text-xs md:text-sm mt-2 space-y-1 font-medium">
+                                    <li>Update the <code className="bg-red-100 px-1 rounded">customNetlifyConfig</code> block in the HTML source code.</li>
+                                    <li>Go to your Firebase Console → Authentication → Sign-in method → Enable <strong>Anonymous Auth</strong>.</li>
+                                    <li>Ensure your Firestore Rules are set to allow reads and writes.</li>
+                                </ol>
+                                {dbErrorMessage && <p className="mt-3 text-[10px] md:text-xs font-mono bg-red-100 p-2 rounded break-words">Log: {dbErrorMessage}</p>}
                             </div>
                         </div>
                     )}
@@ -918,8 +804,8 @@
                                 <div className="w-full min-w-0">
                                     <p className="text-[10px] md:text-xs text-gray-500 font-medium">Slowest Supplier</p>
                                     <div className="flex items-end justify-between w-full">
-                                        <h3 className="text-sm md:text-lg font-bold text-gray-900 truncate mr-2" title={slowestVendor.name}>{slowestVendor.name}</h3>
-                                        {slowestVendor.avgDays > 0 && <span className="text-[10px] md:text-xs font-black text-purple-700 whitespace-nowrap bg-purple-50 px-1.5 py-0.5 rounded">{slowestVendor.avgDays.toFixed(0)}d avg</span>}
+                                        <h3 className="text-sm md:text-lg font-bold text-gray-900 truncate mr-2" title={slowestVendor?.name}>{slowestVendor?.name || 'N/A'}</h3>
+                                        {slowestVendor?.avgDays > 0 && <span className="text-[10px] md:text-xs font-black text-purple-700 whitespace-nowrap bg-purple-50 px-1.5 py-0.5 rounded">{slowestVendor.avgDays.toFixed(0)}d avg</span>}
                                     </div>
                                 </div>
                             </div>
@@ -1102,18 +988,10 @@
                     return 0;
                 });
 
-                let earmarkedAmt = 0;
-                let preparedAmt = 0;
-                let releasedAmt = 0;
-                
+                let earmarkedAmt = 0; let preparedAmt = 0; let releasedAmt = 0;
                 treasuryApvs.forEach(apv => {
                     const amt = Number(apv.amount || 0);
-                    if (apv.status === 'Unpaid') {
-                        earmarkedAmt += amt;
-                        if (apv.checkStatus === 'Prepared') preparedAmt += amt;
-                    } else if (apv.status === 'Paid') {
-                        releasedAmt += amt;
-                    }
+                    if (apv.status === 'Unpaid') { earmarkedAmt += amt; if (apv.checkStatus === 'Prepared') preparedAmt += amt; } else if (apv.status === 'Paid') { releasedAmt += amt; }
                 });
 
                 return (
@@ -1384,20 +1262,14 @@
 
                             <div className="flex flex-col sm:flex-row items-center gap-2 w-full lg:w-auto">
                                 <div className="hidden lg:block">{renderHeaderBadge()}</div>
-                                
-                                {/* Global Unified Search */}
                                 <div className="relative w-full sm:w-64">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
                                     <input type="text" placeholder="Global Search..." title="Search across PO, Vendor, Remarks, APV, or Check Details" value={globalSearchQuery} onChange={e => setGlobalSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors shadow-sm" />
                                 </div>
-
-                                {/* Global Filters */}
                                 <div className="flex gap-2 w-full sm:w-auto">
                                     <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none shadow-sm cursor-pointer hover:bg-gray-50" title="Filter by Month">
                                         <option value="All">All Months (YTD)</option>
-                                        {availableMonths.map(m => (
-                                            <option key={m} value={m}>{formatMonthLabel(m)}</option>
-                                        ))}
+                                        {availableMonths.map(m => (<option key={m} value={m}>{formatMonthLabel(m)}</option>))}
                                     </select>
                                     <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Category">
                                         <option value="All">All Categories</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="General">General/Other</option>
@@ -1425,14 +1297,12 @@
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
                                 <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Authorization Login</h3>
                                 <p className="text-xs text-gray-500">Enter your assigned passcode to elevate your access permissions.</p>
-                                
                                 <input type="password" autoFocus placeholder="Passcode" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
                                 <div className="flex justify-end space-x-3"><button onClick={() => setShowAdminLogin(false)} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button onClick={handleAdminLoginSubmit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">Login</button></div>
                             </div>
                         </div>
                     )}
 
-                    {/* Import CSV Modal */}
                     {isImportModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
@@ -1441,39 +1311,25 @@
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">1. Select Data Type</label>
                                         <select value={importType} onChange={e => setImportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-50 bg-white">
-                                            <option value="purchases">Purchase Orders</option>
-                                            <option value="apvs">APV Records</option>
+                                            <option value="purchases">Purchase Orders</option><option value="apvs">APV Records</option>
                                         </select>
                                     </div>
-                                    
                                     <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg">
                                         <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wide mb-1 flex items-center"><AlertCircle size={12} className="mr-1"/> Required CSV Headers</label>
-                                        <p className="text-xs text-blue-700 font-mono break-all">
-                                            {importType === 'purchases' 
-                                                ? "id, businessUnit, category, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, grossAmount, discountAmount, paymentTerms, prRequestor, processorName, remarks" 
-                                                : "id, poId, businessUnit, category, vendor, invoiceDate, dueDate, amount, paymentTerms, status, settledDate"}
-                                        </p>
+                                        <p className="text-xs text-blue-700 font-mono break-all">{importType === 'purchases' ? "id, businessUnit, category, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, grossAmount, discountAmount, paymentTerms, prRequestor, processorName, remarks" : "id, poId, businessUnit, category, vendor, invoiceDate, dueDate, amount, paymentTerms, status, settledDate"}</p>
                                         <p className="text-[10px] text-blue-600 mt-1 italic">Note: Dates must be formatted as YYYY-MM-DD.</p>
                                     </div>
-
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">2. Upload File</label>
                                         <input required type="file" accept=".csv" onChange={e => setImportFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
                                     </div>
-
-                                    {importingStatus && (
-                                        <div className={`p-3 rounded-lg text-xs font-medium text-center ${importingStatus.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
-                                            {importingStatus}
-                                        </div>
-                                    )}
-
+                                    {importingStatus && (<div className={`p-3 rounded-lg text-xs font-medium text-center ${importingStatus.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>{importingStatus}</div>)}
                                     <div className="pt-4 flex justify-end space-x-3"><button type="button" onClick={() => { setIsImportModalOpen(false); setImportingStatus(''); }} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button type="submit" disabled={!!importingStatus && !importingStatus.includes('Error')} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center"><Upload size={16} className="mr-2"/> Import</button></div>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* APV Advance Funding Modal */}
                     {isFundModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
@@ -1482,39 +1338,26 @@
                                     <button onClick={() => setIsFundModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                                 </div>
                                 <form onSubmit={handleFundSubmit} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-sm text-gray-600 mb-2">
-                                        Specify the funding date to allocate cash position. You can set this to a future date for advance funding.
-                                    </div>
+                                    <div className="text-sm text-gray-600 mb-2">Specify the funding date to allocate cash position. You can set this to a future date for advance funding.</div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label>
                                         <input required list="unpaid-apvs" value={fundData.apvId} onChange={e => setFundData({...fundData, apvId: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type APV Number" />
                                     </div>
                                     {(() => {
                                         const match = apvs.find(a => a.id === fundData.apvId);
-                                        if (match) {
-                                            return (
-                                                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs">
-                                                    <div className="flex justify-between mb-1"><span className="text-indigo-800 font-bold">Vendor:</span> <span>{match.vendor}</span></div>
-                                                    <div className="flex justify-between"><span className="text-indigo-800 font-bold">Amount:</span> <span className="font-black">{formatCurrency(match.amount)}</span></div>
-                                                </div>
-                                            )
-                                        }
+                                        if (match) return (<div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs"><div className="flex justify-between mb-1"><span className="text-indigo-800 font-bold">Vendor:</span> <span>{match.vendor}</span></div><div className="flex justify-between"><span className="text-indigo-800 font-bold">Amount:</span> <span className="font-black">{formatCurrency(match.amount)}</span></div></div>)
                                         return null;
                                     })()}
                                     <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">Funding Date</label>
                                         <input required type="date" value={fundData.fundDate} onChange={e => setFundData({...fundData, fundDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
                                     </div>
-                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
-                                        <button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                        <button type="submit" disabled={!apvs.some(a => a.id === fundData.apvId)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button>
-                                    </div>
+                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" disabled={!apvs.some(a => a.id === fundData.apvId)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* Treasury Check Modal */}
                     {isCheckModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
@@ -1529,25 +1372,15 @@
                                     </div>
                                     {(() => {
                                         const match = apvs.find(a => a.id === checkApvId);
-                                        if (match) {
-                                            return (
-                                                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4 text-xs">
-                                                    <div className="flex justify-between mb-1"><span className="text-slate-500 uppercase font-bold text-[10px]">Vendor:</span> <span className="font-medium">{match.vendor}</span></div>
-                                                    <div className="flex justify-between"><span className="text-slate-500 uppercase font-bold text-[10px]">Amount:</span> <span className="font-black text-indigo-700">{formatCurrency(match.amount)}</span></div>
-                                                </div>
-                                            )
-                                        }
+                                        if (match) return (<div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4 text-xs"><div className="flex justify-between mb-1"><span className="text-slate-500 uppercase font-bold text-[10px]">Vendor:</span> <span className="font-medium">{match.vendor}</span></div><div className="flex justify-between"><span className="text-slate-500 uppercase font-bold text-[10px]">Amount:</span> <span className="font-black text-indigo-700">{formatCurrency(match.amount)}</span></div></div>)
                                         return null;
                                     })()}
                                     <div>
                                         <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1">Check Status</label>
                                         <select required value={checkData.checkStatus} onChange={e => setCheckData({...checkData, checkStatus: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                                            <option value="Pending Check">Pending Check Generation</option>
-                                            <option value="Prepared">Check Prepared</option>
-                                            <option value="Collected">Collected / Released</option>
+                                            <option value="Pending Check">Pending Check Generation</option><option value="Prepared">Check Prepared</option><option value="Collected">Collected / Released</option>
                                         </select>
                                     </div>
-                                    
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1">Check Number</label>
@@ -1558,7 +1391,6 @@
                                             <input type="date" value={checkData.checkDate} onChange={e => setCheckData({...checkData, checkDate: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
                                         </div>
                                     </div>
-
                                     {checkData.checkStatus === 'Collected' && (
                                         <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 animate-in fade-in">
                                             <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wide mb-1">Release / Collection Date</label>
@@ -1566,39 +1398,23 @@
                                             <p className="text-[10px] text-emerald-600 mt-2 italic">Note: Marking as collected will automatically resolve the APV as "Paid".</p>
                                         </div>
                                     )}
-
-                                    <div className="pt-4 flex justify-end space-x-3">
-                                        <button type="button" onClick={() => setIsCheckModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                        <button type="submit" disabled={!apvs.some(a => a.id === checkApvId)} className="px-4 py-2 bg-indigo-600 text-white disabled:opacity-50 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-700">Save Data</button>
-                                    </div>
+                                    <div className="pt-4 flex justify-end space-x-3"><button type="button" onClick={() => setIsCheckModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" disabled={!apvs.some(a => a.id === checkApvId)} className="px-4 py-2 bg-indigo-600 text-white disabled:opacity-50 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-700">Save Data</button></div>
                                 </form>
                             </div>
                         </div>
                     )}
                     
-                    {/* Super User Reset Modal */}
                     {isResetFundingModalOpen && apvToReset && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
-                                    <h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Reset APV</h3>
-                                    <button onClick={() => setIsResetFundingModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button>
-                                </div>
-                                <div className="p-4 md:p-6 space-y-4 text-center">
-                                    <p className="text-sm md:text-base text-gray-700">Are you sure you want to remove funding and delete all check details for <strong className="whitespace-nowrap">{apvToReset.id}</strong>?</p>
-                                    <p className="text-xs md:text-sm text-gray-500">This will revert the APV to an unfunded, unpaid state.</p>
-                                </div>
-                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
-                                    <button onClick={() => setIsResetFundingModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
-                                    <button onClick={executeResetFunding} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center">Remove Data</button>
-                                </div>
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50"><h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Reset APV</h3><button onClick={() => setIsResetFundingModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button></div>
+                                <div className="p-4 md:p-6 space-y-4 text-center"><p className="text-sm md:text-base text-gray-700">Are you sure you want to remove funding and delete all check details for <strong className="whitespace-nowrap">{apvToReset.id}</strong>?</p><p className="text-xs md:text-sm text-gray-500">This will revert the APV to an unfunded, unpaid state.</p></div>
+                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button onClick={() => setIsResetFundingModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button><button onClick={executeResetFunding} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center">Remove Data</button></div>
                             </div>
                         </div>
                     )}
 
-                    <datalist id="unpaid-apvs">
-                        {apvs.filter(a => a.status === 'Unpaid').map(a => <option key={a.id} value={a.id} />)}
-                    </datalist>
+                    <datalist id="unpaid-apvs">{apvs.filter(a => a.status === 'Unpaid').map(a => <option key={a.id} value={a.id} />)}</datalist>
 
                     {isApvModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -1607,11 +1423,7 @@
                                 <form onSubmit={handleAddApv} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">APV Number</label><input required readOnly={!!editingApvId} value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingApvId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => {
-                                            const val = e.target.value;
-                                            const matched = purchases.find(p => p.id === val);
-                                            setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor, businessUnit: matched.businessUnit, category: matched.category || 'General', amount: matched.amount.toString()} : {})});
-                                        }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => { const val = e.target.value; const matched = purchases.find(p => p.id === val); setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor, businessUnit: matched.businessUnit, category: matched.category || 'General', amount: matched.amount.toString()} : {})}); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
@@ -1649,16 +1461,8 @@
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Actual Received Date <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><input type="date" value={newPo.receivedDate || ''} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" /></div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-3">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Gross Amt (₱)</label><input required disabled={accessLevel === 1} type="number" step="0.01" value={newPo.grossAmount} onChange={e => {
-                                            const gross = e.target.value; const discount = newPo.discountAmount || 0;
-                                            const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount)).toString();
-                                            setNewPo({...newPo, grossAmount: gross, amount: net});
-                                        }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-emerald-600">Discount (₱)</label><input disabled={accessLevel === 1} type="number" step="0.01" value={newPo.discountAmount} onChange={e => {
-                                            const discount = e.target.value; const gross = newPo.grossAmount || 0;
-                                            const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount || 0)).toString();
-                                            setNewPo({...newPo, discountAmount: discount, amount: net});
-                                        }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Gross Amt (₱)</label><input required disabled={accessLevel === 1} type="number" step="0.01" value={newPo.grossAmount} onChange={e => { const gross = e.target.value; const discount = newPo.discountAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount)).toString(); setNewPo({...newPo, grossAmount: gross, amount: net}); }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-emerald-600">Discount (₱)</label><input disabled={accessLevel === 1} type="number" step="0.01" value={newPo.discountAmount} onChange={e => { const discount = e.target.value; const gross = newPo.grossAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount || 0)).toString(); setNewPo({...newPo, discountAmount: discount, amount: net}); }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'}`} /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-blue-600">Net Amount (₱)</label><input disabled type="number" value={newPo.amount} className="w-full px-2.5 py-2 border rounded-lg text-sm bg-blue-50 text-blue-800 font-bold border-blue-200 cursor-not-allowed" /></div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-3">
@@ -1666,26 +1470,12 @@
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option></select></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select disabled={accessLevel === 1} value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
                                     </div>
-                                    
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] uppercase font-bold text-gray-500">PR Requestor</label>
-                                            <input required disabled={accessLevel === 1} type="text" value={newPo.prRequestor || ''} onChange={e => setNewPo({...newPo, prRequestor: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Juan Santos" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] uppercase font-bold text-gray-500">Purchasing Processor</label>
-                                            <input required disabled={accessLevel === 1} type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Alex Reyes" />
-                                        </div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PR Requestor</label><input required disabled={accessLevel === 1} type="text" value={newPo.prRequestor || ''} onChange={e => setNewPo({...newPo, prRequestor: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Juan Santos" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Purchasing Processor</label><input required disabled={accessLevel === 1} type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Alex Reyes" /></div>
                                     </div>
-                                    
-                                    <div>
-                                        <label className="text-[10px] uppercase font-bold text-gray-500">Description</label>
-                                        <input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="Brief description of items" />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label>
-                                        <textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea>
-                                    </div>
+                                    <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="Brief description of items" /></div>
+                                    <div><label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea></div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Save PO</button></div>
                                 </form>
                             </div>
@@ -1729,7 +1519,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
     </script>
 </body>
 </html>
