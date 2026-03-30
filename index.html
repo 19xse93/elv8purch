@@ -6,7 +6,7 @@
     <title>ProcureMonitor | APV Aging Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FIX: Mask injected module loaders (like Vercel Toolbar) that break standard UMD scripts -->
+    <!-- FIX: Mask injected module loaders -->
     <script>
         window.__define = window.define;
         window.__exports = window.exports;
@@ -29,7 +29,7 @@
         window.module = window.__module;
     </script>
 
-    <!-- Babel & Firebase (Compat Libraries for UMD usage) -->
+    <!-- Babel & Firebase -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -88,8 +88,10 @@
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
+        const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer');
 
         // --- Firebase Initialization ---
+        // UPDATE THESE VALUES WITH YOUR OWN FIREBASE CONFIG FOR NETLIFY DEPLOYMENTS
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
             authDomain: "elev8-be0f4.firebaseapp.com",
@@ -207,6 +209,17 @@
             }
         };
 
+        const getWeekRange = (dateStr) => {
+            const d = safeParseDate(dateStr) || new Date();
+            const day = d.getDay();
+            const diffToMonday = day === 0 ? -6 : 1 - day;
+            const start = new Date(d);
+            start.setDate(d.getDate() + diffToMonday);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 4); // Friday
+            return `${start.toLocaleDateString('en-US', {month:'short', day:'numeric'})} - ${end.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})}`;
+        };
+
         const getDaysDiff = (startStr, endStr) => {
             const s = safeParseDate(startStr); 
             const e = safeParseDate(endStr);
@@ -264,10 +277,13 @@
             const [purchases, setPurchases] = useState([]);
             const [apvs, setApvs] = useState([]);
             const [isDataLoading, setIsDataLoading] = useState(true);
+            const [dbError, setDbError] = useState(false); // Track DB connection errors
 
-            // Global Filters
+            // Global Unified Filters
+            const [globalSearchQuery, setGlobalSearchQuery] = useState('');
             const [selectedBU, setSelectedBU] = useState('All');
             const [selectedCategory, setSelectedCategory] = useState('All');
+            const [selectedMonth, setSelectedMonth] = useState('All');
 
             const [accessLevel, setAccessLevel] = useState(0); 
             const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -289,22 +305,28 @@
             const [isClearing, setIsClearing] = useState(false);
             const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+            // Super User Delete Check Data Modal
+            const [isResetFundingModalOpen, setIsResetFundingModalOpen] = useState(false);
+            const [apvToReset, setApvToReset] = useState(null);
+
+            // Funding Date Modal States
+            const [isFundModalOpen, setIsFundModalOpen] = useState(false);
+            const [fundData, setFundData] = useState({ apvId: '', fundDate: '' });
+
+            // Treasury / Check Modal States
+            const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
+            const [checkApvId, setCheckApvId] = useState('');
+            const [checkData, setCheckData] = useState({ checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
+
             // Forms Data
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
-            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', remarks: '' });
-            const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: '', paymentTerms: 'Terms', status: 'Unpaid' });
+            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' });
+            const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
-            const [isPayApvModalOpen, setIsPayApvModalOpen] = useState(false);
-            const [selectedApvToPay, setSelectedApvToPay] = useState(null);
-            const [settleDate, setSettleDate] = useState('');
 
-            // Search States
-            const [poSearchQuery, setPoSearchQuery] = useState('');
-            const [apvSearchQuery, setApvSearchQuery] = useState('');
-            
-            // Filter States
+            // View Specific Filters
             const [poStatusFilter, setPoStatusFilter] = useState('All');
             const [apvStatusFilter, setApvStatusFilter] = useState('All');
 
@@ -329,10 +351,20 @@
                                 currentUser = cred.user;
                             }
                         }
-                    } catch (error) { console.error("Auth failed:", error); }
+                    } catch (error) { 
+                        console.error("Auth failed:", error); 
+                        setDbError(true);
+                        setIsDataLoading(false); // Stop loading if auth fails
+                    }
                 };
                 initAuth().then(() => {
-                    unsubscribe = firebase.auth().onAuthStateChanged((u) => setUser(u));
+                    unsubscribe = firebase.auth().onAuthStateChanged((u) => {
+                        setUser(u);
+                        if (!u) {
+                            setDbError(true);
+                            setIsDataLoading(false); // Stop loading if auth listener returns null
+                        }
+                    });
                 });
                 return () => unsubscribe();
             }, []);
@@ -346,7 +378,11 @@
                         const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
                     },
-                    (error) => console.warn("Firestore listener error (purchases):", error)
+                    (error) => {
+                        console.warn("Firestore listener error (purchases):", error);
+                        setDbError(true);
+                        setIsDataLoading(false); // Stop infinite loading
+                    }
                 );
 
                 const unsubApvs = dbRef.collection('apvs').onSnapshot(
@@ -355,7 +391,11 @@
                         setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
                         setIsDataLoading(false);
                     },
-                    (error) => console.warn("Firestore listener error (apvs):", error)
+                    (error) => {
+                        console.warn("Firestore listener error (apvs):", error);
+                        setDbError(true);
+                        setIsDataLoading(false); // Stop infinite loading
+                    }
                 );
 
                 return () => { unsubPurchases(); unsubApvs(); };
@@ -363,47 +403,100 @@
 
             const getItemCategory = (item) => item.category || 'General';
 
-            const filteredPurchases = useMemo(() => {
+            const availableMonths = useMemo(() => {
+                const months = new Set();
+                purchases.forEach(p => {
+                    if (p.date) {
+                        const prefix = p.date.substring(0, 7);
+                        if (prefix.match(/^\d{4}-\d{2}$/)) months.add(prefix);
+                    }
+                });
+                apvs.forEach(a => {
+                    if (a.invoiceDate) {
+                        const prefix = a.invoiceDate.substring(0, 7);
+                        if (prefix.match(/^\d{4}-\d{2}$/)) months.add(prefix);
+                    }
+                });
+                return Array.from(months).sort().reverse();
+            }, [purchases, apvs]);
+
+            const formatMonthLabel = (yyyy_mm) => {
+                const [year, month] = yyy_mm.split('-');
+                const date = new Date(year, parseInt(month) - 1, 1);
+                return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            };
+
+            // --- Unified Filtering Logic ---
+            const baseFilteredPurchases = useMemo(() => {
+                const query = globalSearchQuery.toLowerCase();
                 return purchases.filter(p => {
                     const matchBU = selectedBU === 'All' || p.businessUnit === selectedBU;
                     const matchCat = selectedCategory === 'All' || getItemCategory(p) === selectedCategory;
-                    const matchSearch = poSearchQuery === '' || 
-                                        (p.id && p.id.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
-                                        (p.vendor && p.vendor.toLowerCase().includes(poSearchQuery.toLowerCase())) || 
-                                        (p.processorName && p.processorName.toLowerCase().includes(poSearchQuery.toLowerCase())) ||
-                                        (p.remarks && p.remarks.toLowerCase().includes(poSearchQuery.toLowerCase()));
-                    const matchStatus = poStatusFilter === 'All' || p.status === poStatusFilter;
-                    return matchBU && matchCat && matchSearch && matchStatus;
+                    const matchMonth = selectedMonth === 'All' || (p.date && p.date.startsWith(selectedMonth));
+                    const matchSearch = query === '' || 
+                        (p.id && String(p.id).toLowerCase().includes(query)) || 
+                        (p.vendor && String(p.vendor).toLowerCase().includes(query)) || 
+                        (p.processorName && String(p.processorName).toLowerCase().includes(query)) ||
+                        (p.prRequestor && String(p.prRequestor).toLowerCase().includes(query)) ||
+                        (p.remarks && String(p.remarks).toLowerCase().includes(query)) ||
+                        apvs.some(a => a.poId === p.id && (
+                            (a.id && String(a.id).toLowerCase().includes(query)) ||
+                            (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query))
+                        ));
+                    return matchBU && matchCat && matchMonth && matchSearch;
                 });
-            }, [purchases, selectedBU, selectedCategory, poSearchQuery, poStatusFilter]);
+            }, [purchases, apvs, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
 
-            const filteredApvs = useMemo(() => {
+            const baseFilteredApvs = useMemo(() => {
+                const query = globalSearchQuery.toLowerCase();
                 return apvs.filter(a => {
                     const matchBU = selectedBU === 'All' || a.businessUnit === selectedBU;
                     const matchCat = selectedCategory === 'All' || getItemCategory(a) === selectedCategory;
-                    const matchSearch = apvSearchQuery === '' || 
-                                        (a.id && a.id.toLowerCase().includes(apvSearchQuery.toLowerCase())) ||
-                                        (a.vendor && a.vendor.toLowerCase().includes(apvSearchQuery.toLowerCase()));
-                    const matchStatus = apvStatusFilter === 'All' || a.status === apvStatusFilter;
-                    return matchBU && matchCat && matchSearch && matchStatus;
+                    const matchMonth = selectedMonth === 'All' || (a.invoiceDate && a.invoiceDate.startsWith(selectedMonth));
+                    
+                    const linkedPo = purchases.find(p => p.id === a.poId);
+                    const matchSearch = query === '' || 
+                        (a.id && String(a.id).toLowerCase().includes(query)) ||
+                        (a.poId && String(a.poId).toLowerCase().includes(query)) ||
+                        (a.vendor && String(a.vendor).toLowerCase().includes(query)) ||
+                        (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query)) ||
+                        (linkedPo && (
+                            (linkedPo.remarks && String(linkedPo.remarks).toLowerCase().includes(query)) ||
+                            (linkedPo.processorName && String(linkedPo.processorName).toLowerCase().includes(query)) ||
+                            (linkedPo.prRequestor && String(linkedPo.prRequestor).toLowerCase().includes(query))
+                        ));
+                    return matchBU && matchCat && matchMonth && matchSearch;
                 });
-            }, [apvs, selectedBU, selectedCategory, apvSearchQuery, apvStatusFilter]);
+            }, [apvs, purchases, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
 
-            const { totalPurchases, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
-                let tPurchases = filteredPurchases.reduce((sum, p) => sum + Number(p.amount), 0);
-                let pDeliveries = filteredPurchases.filter(p => !p.receivedDate).length;
+            const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
+            const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
+
+
+            const { totalPurchases, totalSavings, slowestVendor, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
+                let tPurchases = 0;
+                let tSavings = 0;
+                let pDeliveries = 0;
                 let tOutstanding = 0;
                 
+                const currentDay = TODAY.getDay();
+                const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
                 const startOfWeek = new Date(TODAY); 
-                startOfWeek.setDate(TODAY.getDate() - TODAY.getDay()); 
+                startOfWeek.setDate(TODAY.getDate() + diffToMonday); 
                 startOfWeek.setHours(0,0,0,0);
                 const endOfCurrentWeek = new Date(startOfWeek); 
-                endOfCurrentWeek.setDate(startOfWeek.getDate() + 6); 
+                endOfCurrentWeek.setDate(startOfWeek.getDate() + 4); 
                 endOfCurrentWeek.setHours(23, 59, 59, 999);
 
                 let totalProcessingDays = 0, processedCount = 0, onTimeCount = 0, receivedCount = 0;
+                const vendorLeadTimes = {};
 
-                filteredPurchases.forEach(p => {
+                baseFilteredPurchases.forEach(p => {
+                    tPurchases += Number(p.amount || 0);
+                    tSavings += Number(p.discountAmount || 0);
+                    
+                    if (!p.receivedDate) pDeliveries++;
+
                     if (p.prReceivedDate && p.date) {
                         const diff = getDaysDiff(p.prReceivedDate, p.date);
                         if (diff !== null && diff >= 0) { totalProcessingDays += diff; processedCount++; }
@@ -413,13 +506,40 @@
                         const diff = getDaysDiff(p.expectedDelivery, p.receivedDate);
                         if (diff !== null && diff <= 0) { onTimeCount++; }
                     }
+
+                    if (p.receivedDate) {
+                        let startDate = p.date;
+                        if (p.paymentTerms === 'COD') {
+                            const linkedApv = apvs.find(a => a.poId === p.id);
+                            if (linkedApv && linkedApv.settledDate) {
+                                startDate = linkedApv.settledDate;
+                            }
+                        }
+                        if (startDate) {
+                            const diff = getDaysDiff(startDate, p.receivedDate);
+                            if (diff !== null) {
+                                if (!vendorLeadTimes[p.vendor]) vendorLeadTimes[p.vendor] = { totalDays: 0, count: 0 };
+                                vendorLeadTimes[p.vendor].totalDays += diff;
+                                vendorLeadTimes[p.vendor].count++;
+                            }
+                        }
+                    }
                 });
+
+                let sVendor = { name: 'Evaluating Data...', avgDays: 0 };
+                Object.keys(vendorLeadTimes).forEach(v => {
+                    const avg = vendorLeadTimes[v].totalDays / vendorLeadTimes[v].count;
+                    if (avg > sVendor.avgDays) {
+                        sVendor = { name: v, avgDays: avg };
+                    }
+                });
+                if (Object.keys(vendorLeadTimes).length === 0) sVendor.name = 'No deliveries recorded yet.';
 
                 const summary = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0 };
                 const weeklyNeed = { 'Current': 0, '1-30 Days': 0, '31-60 Days': 0, '61-90 Days': 0, '> 90 Days': 0, total: 0 };
                 const vAging = {};
 
-                filteredApvs.forEach(apv => {
+                baseFilteredApvs.forEach(apv => {
                     const amt = Number(apv.amount || 0);
                     if (apv.status === 'Unpaid') {
                         tOutstanding += amt;
@@ -438,32 +558,114 @@
                 });
 
                 return { 
-                    totalPurchases: tPurchases, pendingDeliveriesCount: pDeliveries, totalOutstanding: tOutstanding, 
+                    totalPurchases: tPurchases, totalSavings: tSavings, slowestVendor: sVendor,
+                    pendingDeliveriesCount: pDeliveries, totalOutstanding: tOutstanding, 
                     agingSummary: summary, vendorAging: Object.values(vAging).sort((a, b) => b.total - a.total),
                     avgProcessingTime: processedCount > 0 ? (totalProcessingDays / processedCount).toFixed(1) : 0,
                     onTimeRate: receivedCount > 0 ? ((onTimeCount / receivedCount) * 100).toFixed(0) : 0,
                     weeklyNeedToPay: weeklyNeed, endOfWeek: endOfCurrentWeek
                 };
-            }, [filteredPurchases, filteredApvs]);
+            }, [baseFilteredPurchases, baseFilteredApvs]);
 
-            const openPayModal = (apv) => { setSelectedApvToPay(apv); setSettleDate(TODAY.toISOString().split('T')[0]); setIsPayApvModalOpen(true); };
+            const openFundModal = (apv = null) => {
+                setFundData({ apvId: apv ? apv.id : '', fundDate: TODAY.toISOString().split('T')[0] });
+                setIsFundModalOpen(true);
+            };
 
-            const handlePayApv = async (e) => {
+            const handleFundSubmit = async (e) => {
                 e.preventDefault();
-                if (!user || accessLevel < 3 || !selectedApvToPay) return;
-                await getDbRef().collection('apvs').doc(selectedApvToPay.id).update({ status: 'Paid', settledDate: settleDate });
-                setIsPayApvModalOpen(false); setSelectedApvToPay(null); setSettleDate('');
+                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                const targetApv = apvs.find(a => a.id === fundData.apvId);
+                if (!targetApv) return;
+                const updates = { funded: true, fundedDate: fundData.fundDate };
+                await getDbRef().collection('apvs').doc(targetApv.id).update(updates);
+                setIsFundModalOpen(false);
+            };
+
+            const handleUnfund = async (apv) => {
+                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null });
+            };
+
+            const openCheckModal = (apv = null) => {
+                setCheckApvId(apv ? apv.id : '');
+                setCheckData({
+                    checkNumber: apv ? (apv.checkNumber || '') : '',
+                    checkDate: apv ? (apv.checkDate || TODAY.toISOString().split('T')[0]) : TODAY.toISOString().split('T')[0],
+                    releaseDate: apv ? (apv.releaseDate || TODAY.toISOString().split('T')[0]) : TODAY.toISOString().split('T')[0],
+                    checkStatus: apv ? (apv.checkStatus || 'Pending Check') : 'Pending Check'
+                });
+                setIsCheckModalOpen(true);
+            };
+
+            const handleCheckApvChange = (e) => {
+                const val = e.target.value;
+                setCheckApvId(val);
+                const apv = apvs.find(a => a.id === val);
+                if (apv) {
+                    setCheckData({
+                        checkNumber: apv.checkNumber || '',
+                        checkDate: apv.checkDate || TODAY.toISOString().split('T')[0],
+                        releaseDate: apv.releaseDate || TODAY.toISOString().split('T')[0],
+                        checkStatus: apv.checkStatus || 'Pending Check'
+                    });
+                }
+            };
+
+            const handleSaveCheck = async (e) => {
+                e.preventDefault();
+                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                const targetApv = apvs.find(a => a.id === checkApvId);
+                if (!targetApv) return;
+                
+                const isCollected = checkData.checkStatus === 'Collected';
+                const updates = {
+                    checkNumber: checkData.checkNumber,
+                    checkDate: checkData.checkDate,
+                    releaseDate: isCollected ? checkData.releaseDate : null,
+                    checkStatus: checkData.checkStatus,
+                    status: isCollected ? 'Paid' : 'Unpaid',
+                    settledDate: isCollected ? checkData.releaseDate : null,
+                    funded: true
+                };
+                
+                await getDbRef().collection('apvs').doc(targetApv.id).update(updates);
+                setIsCheckModalOpen(false);
+            };
+
+            const confirmResetFunding = (apv) => {
+                setApvToReset(apv);
+                setIsResetFundingModalOpen(true);
+            };
+
+            const executeResetFunding = async () => {
+                if (!user || accessLevel !== 3 || !apvToReset) return;
+                const updates = { funded: false, fundedDate: null, checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check', status: 'Unpaid', settledDate: null };
+                await getDbRef().collection('apvs').doc(apvToReset.id).update(updates);
+                setIsResetFundingModalOpen(false);
+                setApvToReset(null);
             };
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'General', receivedDate: po.receivedDate || '', amount: po.amount.toString(), remarks: po.remarks || '' }); 
+                setNewPo({ 
+                    ...po, 
+                    businessUnit: po.businessUnit || 'ETMC', 
+                    category: po.category || 'General', 
+                    prRequestor: po.prRequestor || '',
+                    receivedDate: po.receivedDate || '', 
+                    amount: po.amount.toString(), 
+                    grossAmount: (po.grossAmount || po.amount || '').toString(),
+                    discountAmount: (po.discountAmount || '').toString(),
+                    paymentTerms: po.paymentTerms || 'Terms',
+                    remarks: po.remarks || '' 
+                }); 
                 setIsPoModalOpen(true); 
             };
 
             const openEditApv = (apv) => { 
                 setEditingApvId(apv.id); 
-                setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', category: apv.category || 'General', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0] }); 
+                setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', category: apv.category || 'General', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0], checkNumber: apv.checkNumber || '', checkDate: apv.checkDate || '', releaseDate: apv.releaseDate || '', checkStatus: apv.checkStatus || 'Pending Check' }); 
                 setIsApvModalOpen(true); 
             };
 
@@ -473,7 +675,6 @@
                 setIsReceiveModalOpen(true); 
             };
 
-            // AI Email Drafting Functions
             const draftAgingReportEmail = async () => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
                 const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\n1-30 Days: ${formatCurrency(agingSummary['1-30 Days'])}\n31-60 Days: ${formatCurrency(agingSummary['31-60 Days'])}\n61-90 Days: ${formatCurrency(agingSummary['61-90 Days'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
@@ -513,26 +714,53 @@
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', remarks: '' }); setIsPoModalOpen(true); };
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault();
                 if (!user) return;
-                if (editingPoId && accessLevel < 1) return; // Need Level 1 to edit
-                if (!editingPoId && accessLevel < 2) return; // Need Level 2 to add
+                if (accessLevel === 4) return; 
+                if (editingPoId && accessLevel < 1) return; 
+                if (!editingPoId && accessLevel < 2) return; 
 
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
-                await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), status: poStatus, receivedDate: newPo.receivedDate || null });
+                
+                await getDbRef().collection('purchases').doc(newPo.id).set({ 
+                    ...newPo, 
+                    amount: Number(newPo.amount), 
+                    grossAmount: Number(newPo.grossAmount || newPo.amount),
+                    discountAmount: Number(newPo.discountAmount || 0),
+                    status: poStatus, 
+                    receivedDate: newPo.receivedDate || null 
+                });
                 setIsPoModalOpen(false); setEditingPoId(null);
             };
 
-            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid' }); setIsApvModalOpen(true); };
+            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' }); setIsApvModalOpen(true); };
 
             const handleAddApv = async (e) => {
                 e.preventDefault();
-                if (!user || accessLevel < 2) return; // Level 2 required to add/edit APVs
+                if (!user || accessLevel < 2 || accessLevel === 4) return; 
                 const isPaid = newApv.status === 'Paid';
-                await getDbRef().collection('apvs').doc(newApv.id).set({ ...newApv, amount: Number(newApv.amount), status: newApv.status, funded: isPaid ? true : (editingApvId ? (apvs.find(a => a.id === editingApvId)?.funded || false) : false), settledDate: isPaid ? newApv.settledDate : null });
+                const baseApv = { ...newApv, amount: Number(newApv.amount), status: newApv.status, settledDate: isPaid ? newApv.settledDate : null };
+                
+                if (isPaid) {
+                    baseApv.funded = true;
+                    if (!baseApv.fundedDate) baseApv.fundedDate = baseApv.settledDate || TODAY.toISOString().split('T')[0];
+                }
+                if (editingApvId) {
+                    const existing = apvs.find(a => a.id === editingApvId);
+                    if (existing) {
+                        baseApv.funded = isPaid ? true : existing.funded;
+                        baseApv.fundedDate = isPaid ? (existing.fundedDate || baseApv.fundedDate) : existing.fundedDate;
+                        baseApv.checkNumber = existing.checkNumber || '';
+                        baseApv.checkDate = existing.checkDate || '';
+                        baseApv.releaseDate = existing.releaseDate || '';
+                        baseApv.checkStatus = existing.checkStatus || 'Pending Check';
+                    }
+                }
+                
+                await getDbRef().collection('apvs').doc(newApv.id).set(baseApv);
                 setIsApvModalOpen(false); setEditingApvId(null);
             };
 
@@ -541,7 +769,7 @@
 
             const handleReceivePo = async (e) => {
                 e.preventDefault();
-                if (!user || !selectedPo || accessLevel < 2) return;
+                if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
                 await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' });
                 setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate('');
             };
@@ -557,7 +785,6 @@
                 setIsClearing(false); setIsClearModalOpen(false);
             };
 
-            // --- Import Logic ---
             const handleImportSubmit = async (e) => {
                 e.preventDefault();
                 if (!user || accessLevel !== 3 || !importFile) return;
@@ -576,21 +803,31 @@
                         
                         let successCount = 0;
                         for (let item of parsedData) {
-                            if (!item.id) continue; // Skip rows without an ID
+                            if (!item.id) continue; 
                             
-                            // Data sanitization
                             item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0);
                             let cleanBU = (item.businessUnit || '').toUpperCase().trim();
                             item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
-                            item.category = item.category || 'General'; // Default category
+                            item.category = item.category || 'General'; 
                             
                             if (importType === 'purchases') {
+                                item.grossAmount = Number(item.grossAmount?.replace(/[^0-9.-]+/g,"") || item.amount);
+                                item.discountAmount = Number(item.discountAmount?.replace(/[^0-9.-]+/g,"") || 0);
+                                item.paymentTerms = item.paymentTerms || 'Terms';
                                 item.status = item.receivedDate ? 'Invoiced' : 'Pending';
-                                item.remarks = item.remarks || ''; // Ensure remarks is set
+                                item.remarks = item.remarks || ''; 
+                                item.prRequestor = item.prRequestor || ''; 
                             } else {
                                 item.funded = String(item.funded).toLowerCase() === 'true' || item.status === 'Paid';
+                                if (item.funded && !item.fundedDate) {
+                                    item.fundedDate = item.settledDate || TODAY.toISOString().split('T')[0];
+                                }
                                 item.status = item.status || 'Unpaid';
                                 item.paymentTerms = item.paymentTerms || 'Terms';
+                                item.checkNumber = item.checkNumber || '';
+                                item.checkDate = item.checkDate || '';
+                                item.releaseDate = item.releaseDate || '';
+                                item.checkStatus = item.checkStatus || 'Pending Check';
                             }
                             
                             await dbRef.doc(item.id).set(item, { merge: true });
@@ -611,8 +848,8 @@
 
             const generateInsights = async () => {
                 setIsGeneratingInsights(true);
-                const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
-                const result = await callGeminiAPI(`Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight.`);
+                const dataSummary = `Total Outstanding: ${formatCurrency(totalOutstanding)}\nCost Savings: ${formatCurrency(totalSavings)}\nCurrent: ${formatCurrency(agingSummary['Current'])}\nOver 90 Days: ${formatCurrency(agingSummary['> 90 Days'])}`;
+                const result = await callGeminiAPI(`Review this Accounts Payable Aging Summary:\n${dataSummary}\nProvide a concise, 3-sentence actionable financial insight. Note any positive impact from the Cost Savings.`);
                 setInsights(result); setIsGeneratingInsights(false);
             };
 
@@ -628,6 +865,7 @@
                 if (adminPassword === 'level1') { setAccessLevel(1); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
                 else if (adminPassword === 'level2') { setAccessLevel(2); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
                 else if (adminPassword === 'admin123') { setAccessLevel(3); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
+                else if (adminPassword === 'treasury') { setAccessLevel(4); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); }
                 else { setAdminError(true); }
             };
 
@@ -635,10 +873,11 @@
 
             const renderHeaderBadge = () => {
                 switch(accessLevel) {
-                    case 3: return <span className="text-emerald-600 flex items-center bg-emerald-50 px-2 py-0.5 rounded mr-2 border border-emerald-200 shrink-0"><Check size={12} className="mr-1" /> Super User</span>;
-                    case 2: return <span className="text-indigo-600 flex items-center bg-indigo-50 px-2 py-0.5 rounded mr-2 border border-indigo-200 shrink-0"><User size={12} className="mr-1" /> Level 2 Access</span>;
-                    case 1: return <span className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded mr-2 border border-blue-200 shrink-0"><User size={12} className="mr-1" /> Level 1 Access</span>;
-                    default: return <span className="text-slate-500 flex items-center bg-slate-100 px-2 py-0.5 rounded mr-2 border border-slate-200 shrink-0"><Lock size={12} className="mr-1" /> View Only</span>;
+                    case 4: return <span className="text-amber-600 flex items-center bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shrink-0 text-xs"><Landmark size={12} className="mr-1" /> Treasury Access</span>;
+                    case 3: return <span className="text-emerald-600 flex items-center bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0 text-xs"><Check size={12} className="mr-1" /> Super User</span>;
+                    case 2: return <span className="text-indigo-600 flex items-center bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 shrink-0 text-xs"><User size={12} className="mr-1" /> Level 2 Access</span>;
+                    case 1: return <span className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0 text-xs"><User size={12} className="mr-1" /> Level 1 Access</span>;
+                    default: return <span className="text-slate-500 flex items-center bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0 text-xs"><Lock size={12} className="mr-1" /> View Only</span>;
                 }
             };
 
@@ -654,26 +893,49 @@
 
             const renderDashboard = () => (
                 <div className="grid grid-cols-1 gap-4 md:gap-6 animate-in fade-in duration-500 items-start">
+                    {dbError && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start mt-4 xl:mt-0">
+                            <AlertTriangle className="mr-3 shrink-0 mt-0.5" size={20} />
+                            <div>
+                                <h3 className="font-bold">Database Connection Error</h3>
+                                <p className="text-sm mt-1">The dashboard failed to authenticate or connect to Firebase. If you deployed this app, please ensure you updated the Firebase Config in the source code and enabled Anonymous Authentication in your Firebase Console.</p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-4 md:space-y-6">
                         <h3 className="text-lg font-semibold text-gray-900 flex items-center pt-4 xl:pt-0"><LayoutDashboard className="mr-2 text-blue-500" size={20} /> Financial Overview</h3>
                         
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-blue-50 rounded-lg text-blue-600 self-start sm:self-auto"><ShoppingCart size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Purchases YTD</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalPurchases)}</h3></div></div>
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-blue-50 rounded-lg text-blue-600 self-start sm:self-auto"><ShoppingCart size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Purchases</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalPurchases)}</h3></div></div>
+                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-emerald-50 rounded-lg text-emerald-600 self-start sm:self-auto"><PiggyBank size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Cost Savings</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalSavings)}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-indigo-50 rounded-lg text-indigo-600 self-start sm:self-auto"><Truck size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Pending Deliveries</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{pendingDeliveriesCount}</h3></div></div>
+                            
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-rose-50 rounded-lg text-rose-600 self-start sm:self-auto"><DollarSign size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Outstanding APV</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalOutstanding)}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-amber-50 rounded-lg text-amber-600 self-start sm:self-auto"><AlertCircle size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Past Due Payables</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalOutstanding - agingSummary['Current'])}</h3></div></div>
+                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 min-w-0">
+                                <div className="p-2 md:p-3 bg-purple-50 rounded-lg text-purple-600 self-start sm:self-auto shrink-0"><Timer size={20}/></div>
+                                <div className="w-full min-w-0">
+                                    <p className="text-[10px] md:text-xs text-gray-500 font-medium">Slowest Supplier</p>
+                                    <div className="flex items-end justify-between w-full">
+                                        <h3 className="text-sm md:text-lg font-bold text-gray-900 truncate mr-2" title={slowestVendor.name}>{slowestVendor.name}</h3>
+                                        {slowestVendor.avgDays > 0 && <span className="text-[10px] md:text-xs font-black text-purple-700 whitespace-nowrap bg-purple-50 px-1.5 py-0.5 rounded">{slowestVendor.avgDays.toFixed(0)}d avg</span>}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 flex items-center"><Activity className="mr-2 text-blue-500" size={18} /> PR to PO Timeline</h3>
                                 <h4 className="text-3xl md:text-4xl font-bold text-gray-900">{avgProcessingTime} <span className="text-sm text-gray-500 font-medium">days</span></h4>
-                                <p className="text-xs text-gray-500 mt-2 italic">Avg processing time across all filtered business units.</p>
+                                <p className="text-xs text-gray-500 mt-2 italic">Avg processing time across all filtered data.</p>
                             </div>
                             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 flex items-center"><Truck className="mr-2 text-indigo-500" size={18} /> Delivery Performance</h3>
                                 <h4 className="text-3xl md:text-4xl font-bold text-gray-900">{onTimeRate}% <span className="text-sm text-gray-500 font-medium">on-time</span></h4>
                                 <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3"><div className="bg-indigo-500 h-1.5 rounded-full transition-all duration-1000" style={{ width: `${onTimeRate}%` }}></div></div>
+                                <p className="text-[10px] text-gray-400 mt-2.5 leading-tight"><strong className="text-gray-500">Note:</strong> For standard orders, performance is Expected vs. Actual delivery. For <strong className="text-gray-500">COD</strong> orders, the computation algorithm strictly measures the timeline between Payment (APV Settled Date) to Delivery.</p>
                             </div>
                         </div>
 
@@ -693,10 +955,6 @@
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
                         <h3 className="text-base md:text-lg font-semibold text-gray-900">Purchase Orders</h3>
                         <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
-                            <div className="relative w-full sm:w-56">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                                <input type="text" placeholder="Search PO, Vendor, or Remarks..." value={poSearchQuery} onChange={e => setPoSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
-                            </div>
                             <div className="relative w-full sm:w-36">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Filter size={14} className="text-gray-400" /></div>
                                 <select value={poStatusFilter} onChange={e => setPoStatusFilter(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-8 py-2 outline-none transition-colors appearance-none cursor-pointer">
@@ -706,12 +964,12 @@
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                             </div>
-                            {accessLevel >= 2 && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
+                            {accessLevel >= 2 && accessLevel !== 4 && (<button onClick={openAddPo} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4 w-1/4">PO Details</th><th className="p-4 w-1/3">Vendor & Remarks</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && <th className="p-4 text-center">Action</th>}</tr></thead>
-                        <tbody className="divide-y divide-gray-100">{filteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredPurchases.map(po => {
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4 w-1/4">PO Details</th><th className="p-4 w-1/3">Vendor & Remarks</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && accessLevel !== 4 && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <tbody className="divide-y divide-gray-100">{tabFilteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : tabFilteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
                             const expDate = safeParseDate(po.expectedDelivery);
                             const isDelayed = !po.receivedDate && expDate && (expDate < TODAY);
@@ -725,9 +983,21 @@
                                         {po.category && po.category !== 'General' && (
                                             <span className="text-[9px] px-1.5 py-[1px] rounded bg-purple-50 text-purple-600 border border-purple-200 uppercase font-bold tracking-tighter">{po.category}</span>
                                         )}
+                                        {po.paymentTerms === 'COD' && (
+                                            <span className="text-[9px] px-1.5 py-[1px] rounded bg-rose-50 text-rose-600 border border-rose-200 uppercase font-bold tracking-tighter">COD</span>
+                                        )}
                                     </div>
                                     <div className="text-[10px] text-gray-500 mb-1.5 line-clamp-2" title={po.description}>{po.description}</div>
-                                    <div className="text-[10px] text-gray-500 mb-1.5">PR Date: {po.prReceivedDate}</div>
+                                    
+                                    <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm mb-1.5">
+                                        <div className="text-[9px] text-gray-600 grid grid-cols-2 gap-x-2 gap-y-1">
+                                            <div><span className="font-bold text-gray-400 uppercase tracking-wider">PR Date:</span> {po.prReceivedDate || 'N/A'}</div>
+                                            <div><span className="font-bold text-gray-400 uppercase tracking-wider">PO Date:</span> {po.date || 'N/A'}</div>
+                                            <div className="truncate" title={po.prRequestor}><span className="font-bold text-gray-400 uppercase tracking-wider">Requestor:</span> {po.prRequestor || 'N/A'}</div>
+                                            <div className="truncate" title={po.processorName}><span className="font-bold text-gray-400 uppercase tracking-wider">Processor:</span> {po.processorName || 'N/A'}</div>
+                                        </div>
+                                    </div>
+
                                     {linkedApv ? (
                                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 inline-flex items-center" title={`Linked APV: ${linkedApv.id}`}><Check size={10} className="mr-1"/> APV: {linkedApv.id}</span>
                                     ) : (
@@ -743,8 +1013,15 @@
                                     )}
                                 </td>
                                 <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black border inline-block mt-1 ${getDeliveryStatus(po.expectedDelivery, po.receivedDate).color}`}>{getDeliveryStatus(po.expectedDelivery, po.receivedDate).label}</span></td>
-                                <td className="p-4 text-right font-bold pt-5">{formatCurrency(po.amount)}</td>
-                                {accessLevel >= 1 && (
+                                <td className="p-4 text-right pt-5">
+                                    <div className="font-bold text-gray-900">{formatCurrency(po.amount)}</div>
+                                    {po.discountAmount > 0 && (
+                                        <div className="text-[9px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 inline-block mt-1">
+                                            Saved {formatCurrency(po.discountAmount)}
+                                        </div>
+                                    )}
+                                </td>
+                                {accessLevel >= 1 && accessLevel !== 4 && (
                                     <td className="p-4 text-center space-x-2 whitespace-nowrap pt-5">
                                         <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
                                         {accessLevel >= 2 && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">Receive</button>}
@@ -771,10 +1048,6 @@
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
                         <h3 className="text-base md:text-lg font-semibold text-gray-900">APV Records</h3>
                         <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
-                            <div className="relative w-full sm:w-56">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                                <input type="text" placeholder="Search APV # or Vendor..." value={apvSearchQuery} onChange={e => setApvSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors" />
-                            </div>
                             <div className="relative w-full sm:w-36">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Filter size={14} className="text-gray-400" /></div>
                                 <select value={apvStatusFilter} onChange={e => setApvStatusFilter(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-8 py-2 outline-none transition-colors appearance-none cursor-pointer">
@@ -784,12 +1057,12 @@
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                             </div>
-                            {accessLevel >= 2 && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
+                            {accessLevel >= 2 && accessLevel !== 4 && (<button onClick={openAddApv} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-blue-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & Details</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{accessLevel >= 2 && <th className="p-4 text-center">Action</th>}</tr></thead>
-                        <tbody className="divide-y divide-gray-100">{filteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : filteredApvs.map(apv => {
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & Details</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{(accessLevel === 2 || accessLevel === 3) && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <tbody className="divide-y divide-gray-100">{tabFilteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : tabFilteredApvs.map(apv => {
                             const aging = getAgingCategory(apv.dueDate, apv.status);
                             return (
                                 <tr key={apv.id} className="hover:bg-gray-50 transition-colors">
@@ -807,18 +1080,9 @@
                                     </td>
                                     <td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td>
                                     <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>
-                                    {accessLevel >= 2 && (
+                                    {(accessLevel === 2 || accessLevel === 3) && (
                                         <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                             <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
-                                            
-                                            {accessLevel === 3 && (
-                                                apv.status === 'Unpaid' ? (
-                                                    <button onClick={() => openPayModal(apv)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 transition-colors text-white">Pay</button>
-                                                ) : (
-                                                    <button onClick={() => draftPaymentNotification(apv)} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-bold transition-colors">Notify</button>
-                                                )
-                                            )}
-                                            
                                             {accessLevel === 3 && <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>}
                                         </td>
                                     )}
@@ -828,6 +1092,104 @@
                     </table></div>
                 </div>
             );
+
+            const renderTreasury = () => {
+                const treasuryApvs = baseFilteredApvs.filter(a => a.status === 'Unpaid' || a.checkNumber || a.funded);
+                
+                const sortedTreasury = [...treasuryApvs].sort((a, b) => {
+                    if (a.status === 'Unpaid' && b.status === 'Paid') return -1;
+                    if (a.status === 'Paid' && b.status === 'Unpaid') return 1;
+                    return 0;
+                });
+
+                let earmarkedAmt = 0;
+                let preparedAmt = 0;
+                let releasedAmt = 0;
+                
+                treasuryApvs.forEach(apv => {
+                    const amt = Number(apv.amount || 0);
+                    if (apv.status === 'Unpaid') {
+                        earmarkedAmt += amt;
+                        if (apv.checkStatus === 'Prepared') preparedAmt += amt;
+                    } else if (apv.status === 'Paid') {
+                        releasedAmt += amt;
+                    }
+                });
+
+                return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+                        <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900 flex items-center"><Landmark className="mr-2 text-indigo-600" size={20} /> Treasury Records</h3>
+                            {(accessLevel === 3 || accessLevel === 4) && (
+                                <div className="flex space-x-2">
+                                    <button onClick={() => openFundModal()} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center"><Landmark size={14} className="mr-1"/> For Funding</button>
+                                    <button onClick={() => openCheckModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors flex items-center"><FileSignature size={14} className="mr-1"/> Create Check</button>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Treasury Summary */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 md:p-6 border-b border-gray-100 bg-slate-50">
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Earmarked (Funded)</p>
+                                <h3 className="text-xl md:text-2xl font-black text-amber-500">{formatCurrency(earmarkedAmt)}</h3>
+                                <p className="text-[10px] text-gray-400 mt-1">Total pending APVs awaiting check</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Checks Prepared</p>
+                                <h3 className="text-xl md:text-2xl font-black text-blue-600">{formatCurrency(preparedAmt)}</h3>
+                                <p className="text-[10px] text-gray-400 mt-1">Ready for vendor pickup</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Checks Released / Paid</p>
+                                <h3 className="text-xl md:text-2xl font-black text-emerald-600">{formatCurrency(releasedAmt)}</h3>
+                                <p className="text-[10px] text-gray-400 mt-1">Historically collected checks</p>
+                            </div>
+                        </div>
+
+                        {/* Treasury Table */}
+                        <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
+                            <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV Ref</th><th className="p-4">Vendor</th><th className="p-4 text-right">Amount</th><th className="p-4">Check Details</th><th className="p-4 text-center">Status</th>{(accessLevel === 3 || accessLevel === 4) && <th className="p-4 text-center">Action</th>}</tr></thead>
+                            <tbody className="divide-y divide-gray-100">{sortedTreasury.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-400 italic">No records match your search.</td></tr> : sortedTreasury.map(apv => {
+                                const isCollected = apv.status === 'Paid';
+                                return (
+                                    <tr key={apv.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="p-4 font-bold text-gray-900">{apv.id}</td>
+                                        <td className="p-4 font-medium">{apv.vendor}</td>
+                                        <td className="p-4 text-right font-black">{formatCurrency(apv.amount)}</td>
+                                        <td className="p-4">
+                                            {apv.checkNumber ? (
+                                                <div className="text-[10px] space-y-0.5">
+                                                    <div><span className="text-gray-400 uppercase font-bold">CHK #:</span> <span className="font-medium text-gray-800">{apv.checkNumber}</span></div>
+                                                    <div><span className="text-gray-400 uppercase font-bold">DATE:</span> <span className="font-medium text-gray-800">{apv.checkDate}</span></div>
+                                                    {apv.releaseDate && <div><span className="text-gray-400 uppercase font-bold">RELEASED:</span> <span className="font-medium text-gray-800">{apv.releaseDate}</span></div>}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] text-amber-500 italic font-medium">No check assigned</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold inline-block border ${isCollected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : apv.checkStatus === 'Prepared' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                                {apv.checkStatus || 'Pending Check'}
+                                            </span>
+                                        </td>
+                                        {(accessLevel === 3 || accessLevel === 4) && (
+                                            <td className="p-4 text-center whitespace-nowrap space-x-2">
+                                                <button onClick={() => apv.funded ? handleUnfund(apv) : openFundModal(apv)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${apv.funded ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`} title={apv.funded ? "Remove Funding" : "For Funding"}>
+                                                    <Landmark size={12} className="inline mr-1" /> {apv.funded ? 'Funded' : 'For Funding'}
+                                                </button>
+                                                <button onClick={() => openCheckModal(apv)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors">
+                                                    <FileSignature size={12} className="inline mr-1" /> Check
+                                                </button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                );
+                            })}</tbody>
+                        </table></div>
+                    </div>
+                );
+            };
 
             const renderAgingReport = () => (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-500 relative">
@@ -848,7 +1210,7 @@
                             </div>
                             <div className="lg:col-span-3 bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm">
                                 <div className="text-[10px] md:text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">Requirement by Category</div>
-                                {weeklyNeedToPay.total === 0 ? (<div className="text-xs md:text-sm text-gray-400 py-2">No payments required for this week.</div>) : (
+                                {weeklyNeedToPay.total === 0 ? (<div className="text-xs md:text-sm text-gray-400 py-2">No payments required based on current search.</div>) : (
                                     <div>
                                         <div className="flex h-3 md:h-4 w-full rounded-full overflow-hidden bg-gray-100 mb-3">
                                             {['> 90 Days', '61-90 Days', '31-60 Days', '1-30 Days', 'Current'].map(category => {
@@ -871,7 +1233,7 @@
                         <table className="w-full text-right border-collapse min-w-[800px]">
                             <thead><tr className="bg-white border-b border-gray-200 text-[10px] uppercase tracking-wider text-gray-500"><th className="p-3 md:p-4 font-semibold text-left">Vendor</th><th className="p-3 md:p-4 font-semibold text-emerald-700 bg-emerald-50/50">Current</th><th className="p-3 md:p-4 font-semibold text-yellow-700 bg-yellow-50/50">1-30 Days</th><th className="p-3 md:p-4 font-semibold text-orange-700 bg-orange-50/50">31-60 Days</th><th className="p-3 md:p-4 font-semibold text-red-700 bg-red-50/50">61-90 Days</th><th className="p-3 md:p-4 font-semibold text-rose-700 bg-rose-50/50">&gt; 90 Days</th><th className="p-3 md:p-4 font-semibold bg-gray-50">Total</th></tr></thead>
                             <tbody className="divide-y divide-gray-100">
-                                {vendorAging.length === 0 ? (<tr><td colSpan="8" className="p-8 text-center text-sm text-gray-500">No outstanding balances.</td></tr>) : (
+                                {vendorAging.length === 0 ? (<tr><td colSpan="8" className="p-8 text-center text-sm text-gray-500">No balances match your search.</td></tr>) : (
                                     vendorAging.map((v, i) => (
                                         <tr key={i} className="hover:bg-gray-50 transition-colors group text-xs md:text-sm"><td className="p-3 md:p-4 font-medium text-gray-900 text-left flex items-center max-w-[150px] truncate" title={v.name}><Building size={14} className="text-gray-400 mr-1.5 shrink-0" /><span className="truncate">{v.name}</span></td><td className={`p-3 md:p-4 ${v['Current'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['Current'])}</td><td className={`p-3 md:p-4 ${v['1-30 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['1-30 Days'])}</td><td className={`p-3 md:p-4 ${v['31-60 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['31-60 Days'])}</td><td className={`p-3 md:p-4 ${v['61-90 Days'] > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{formatCurrency(v['61-90 Days'])}</td><td className={`p-3 md:p-4 ${v['> 90 Days'] > 0 ? 'text-rose-600 font-bold' : 'text-gray-300'}`}>{formatCurrency(v['> 90 Days'])}</td><td className="p-3 md:p-4 font-bold text-gray-900 bg-gray-50/50 group-hover:bg-gray-100/50 transition-colors">{formatCurrency(v.total)}</td></tr>
                                     ))
@@ -883,6 +1245,102 @@
                 </div>
             );
 
+            const renderFundingReport = () => {
+                const weeklyFunding = {};
+                baseFilteredApvs.filter(a => a.funded || a.status === 'Paid').forEach(apv => {
+                    const dateToUse = apv.fundedDate || apv.settledDate || apv.dueDate || TODAY.toISOString().split('T')[0];
+                    const weekLabel = getWeekRange(dateToUse);
+                    const sortKey = safeParseDate(dateToUse)?.getTime() || 0;
+
+                    if (!weeklyFunding[weekLabel]) {
+                        weeklyFunding[weekLabel] = { week: weekLabel, sortKey: sortKey, totalAmount: 0, apvs: [] };
+                    }
+                    weeklyFunding[weekLabel].totalAmount += Number(apv.amount || 0);
+                    weeklyFunding[weekLabel].apvs.push(apv);
+                });
+
+                const sortedWeeks = Object.values(weeklyFunding).sort((a, b) => b.sortKey - a.sortKey);
+
+                return (
+                    <div className="space-y-6 animate-in fade-in">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h3 className="text-lg md:text-xl font-bold text-gray-900 flex items-center"><CalendarDays className="mr-2 text-indigo-600" size={24} /> Cash Position Report</h3>
+                                <p className="text-xs md:text-sm text-gray-500 mt-1">A historical breakdown of APVs grouped by the week they were funded.</p>
+                            </div>
+                        </div>
+
+                        {sortedWeeks.length === 0 ? (
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center text-gray-500 italic">No funded APVs match your search.</div>
+                        ) : (
+                            sortedWeeks.map(weekGroup => (
+                                <div key={weekGroup.week} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+                                    <div className="px-4 md:px-6 py-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
+                                        <h4 className="font-bold text-slate-800 text-sm md:text-base uppercase tracking-wider">Week of {weekGroup.week}</h4>
+                                        <span className="font-black text-indigo-700 text-lg md:text-xl">{formatCurrency(weekGroup.totalAmount)}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs md:text-sm">
+                                            <thead>
+                                                <tr className="border-b border-gray-100 text-gray-500 uppercase bg-white">
+                                                    <th className="p-4 font-semibold">APV #</th>
+                                                    <th className="p-4 font-semibold">Vendor & Business Unit</th>
+                                                    <th className="p-4 font-semibold">Funded Date</th>
+                                                    <th className="p-4 font-semibold">Collection Info</th>
+                                                    <th className="p-4 font-semibold text-right">Amount</th>
+                                                    <th className="p-4 font-semibold text-center">Status</th>
+                                                    {accessLevel === 3 && <th className="p-4 font-semibold text-center">Action</th>}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50 bg-white">
+                                                {weekGroup.apvs.map(apv => (
+                                                    <tr key={apv.id} className="hover:bg-gray-50 transition-colors">
+                                                        <td className="p-4 font-bold text-gray-900">{apv.id}</td>
+                                                        <td className="p-4">
+                                                            <div className="font-medium text-gray-800">{apv.vendor}</div>
+                                                            <div className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">{apv.businessUnit}</div>
+                                                        </td>
+                                                        <td className="p-4 text-gray-600 font-medium">{apv.fundedDate || apv.settledDate || 'Legacy'}</td>
+                                                        <td className="p-4">
+                                                            {apv.checkStatus === 'Collected' || apv.status === 'Paid' ? (
+                                                                <div className="text-[10px]">
+                                                                    {apv.checkNumber && <div><span className="text-gray-400 font-bold uppercase">CHK:</span> {apv.checkNumber}</div>}
+                                                                    <div className="text-emerald-600 font-bold uppercase mt-0.5"><Check size={10} className="inline mr-0.5"/> Collected: {apv.releaseDate || apv.settledDate}</div>
+                                                                </div>
+                                                            ) : apv.checkNumber ? (
+                                                                <div className="text-[10px]">
+                                                                    <div><span className="text-gray-400 font-bold uppercase">CHK:</span> {apv.checkNumber}</div>
+                                                                    <div className="text-amber-500 font-bold uppercase mt-0.5">{apv.checkStatus || 'Prepared'}</div>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] text-gray-400 italic">Pending Check</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4 text-right font-black text-gray-900">{formatCurrency(apv.amount)}</td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-block border uppercase tracking-wider ${apv.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                                {apv.status === 'Paid' ? 'Paid' : 'Funded'}
+                                                            </span>
+                                                        </td>
+                                                        {accessLevel === 3 && (
+                                                            <td className="p-4 text-center">
+                                                                <button onClick={() => confirmResetFunding(apv)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete Check Details & Funding">
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                );
+            };
+
             return (
                 <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden relative">
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
@@ -892,6 +1350,8 @@
                             <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
                             <button onClick={() => handleTabSwitch('purchases')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'purchases' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><ShoppingCart className="mr-3" size={20} /> Purchase Orders</button>
                             <button onClick={() => handleTabSwitch('apvs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'apvs' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><FileText className="mr-3" size={20} /> APV Records</button>
+                            <button onClick={() => handleTabSwitch('treasury')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'treasury' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Wallet className="mr-3" size={20} /> Treasury Records</button>
+                            <button onClick={() => handleTabSwitch('funding')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'funding' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><CalendarDays className="mr-3" size={20} /> Cash Position Report</button>
                             <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
                         </nav>
                         <div className="p-6 bg-slate-950 mt-auto">
@@ -913,27 +1373,48 @@
                     </aside>
 
                     <main className="flex-1 overflow-y-auto w-full flex flex-col">
-                        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-5 sticky top-0 z-10 flex flex-col sm:flex-row justify-between sm:items-center shadow-sm gap-3 sm:gap-0">
-                            <div className="flex items-center">
-                                <button className="md:hidden mr-3" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button>
-                                <h2 className="text-lg md:text-2xl font-bold text-gray-800 capitalize truncate hidden xs:block">{activeTab}</h2>
+                        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-4 sticky top-0 z-10 shadow-sm flex flex-col lg:flex-row justify-between lg:items-center gap-3">
+                            <div className="flex items-center justify-between w-full lg:w-auto">
+                                <div className="flex items-center">
+                                    <button className="lg:hidden mr-3" onClick={() => setIsMobileMenuOpen(true)}><Menu size={24} /></button>
+                                    <h2 className="text-lg md:text-xl font-bold text-gray-800 capitalize truncate">{activeTab === 'apvs' ? 'Accounts Payable' : activeTab.replace('-', ' ')}</h2>
+                                </div>
+                                <div className="block lg:hidden">{renderHeaderBadge()}</div>
                             </div>
-                            <div className="flex items-center space-x-2 md:space-x-4">
-                                {renderHeaderBadge()}
-                                <div className="flex space-x-2">
-                                    <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none" title="Filter by Category">
+
+                            <div className="flex flex-col sm:flex-row items-center gap-2 w-full lg:w-auto">
+                                <div className="hidden lg:block">{renderHeaderBadge()}</div>
+                                
+                                {/* Global Unified Search */}
+                                <div className="relative w-full sm:w-64">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Search size={14} className="text-gray-400" /></div>
+                                    <input type="text" placeholder="Global Search..." title="Search across PO, Vendor, Remarks, APV, or Check Details" value={globalSearchQuery} onChange={e => setGlobalSearchQuery(e.target.value)} className="w-full bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block pl-8 pr-3 py-2 outline-none transition-colors shadow-sm" />
+                                </div>
+
+                                {/* Global Filters */}
+                                <div className="flex gap-2 w-full sm:w-auto">
+                                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none shadow-sm cursor-pointer hover:bg-gray-50" title="Filter by Month">
+                                        <option value="All">All Months (YTD)</option>
+                                        {availableMonths.map(m => (
+                                            <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                                        ))}
+                                    </select>
+                                    <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Category">
                                         <option value="All">All Categories</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="General">General/Other</option>
                                     </select>
-                                    <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none">
-                                        <option value="All">All Business Units</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
+                                    <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Business Unit">
+                                        <option value="All">All BUs</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
                                     </select>
                                 </div>
                             </div>
                         </header>
+                        
                         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1">
                             {activeTab === 'dashboard' && renderDashboard()}
                             {activeTab === 'purchases' && renderPurchases()}
                             {activeTab === 'apvs' && renderAPVs()}
+                            {activeTab === 'treasury' && renderTreasury()}
+                            {activeTab === 'funding' && renderFundingReport()}
                             {activeTab === 'aging' && renderAgingReport()}
                         </div>
                     </main>
@@ -959,7 +1440,7 @@
                                 <form onSubmit={handleImportSubmit} className="p-6 space-y-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">1. Select Data Type</label>
-                                        <select value={importType} onChange={e => setImportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                                        <select value={importType} onChange={e => setImportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-50 bg-white">
                                             <option value="purchases">Purchase Orders</option>
                                             <option value="apvs">APV Records</option>
                                         </select>
@@ -969,7 +1450,7 @@
                                         <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wide mb-1 flex items-center"><AlertCircle size={12} className="mr-1"/> Required CSV Headers</label>
                                         <p className="text-xs text-blue-700 font-mono break-all">
                                             {importType === 'purchases' 
-                                                ? "id, businessUnit, category, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, processorName, remarks" 
+                                                ? "id, businessUnit, category, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, grossAmount, discountAmount, paymentTerms, prRequestor, processorName, remarks" 
                                                 : "id, poId, businessUnit, category, vendor, invoiceDate, dueDate, amount, paymentTerms, status, settledDate"}
                                         </p>
                                         <p className="text-[10px] text-blue-600 mt-1 italic">Note: Dates must be formatted as YYYY-MM-DD.</p>
@@ -991,6 +1472,133 @@
                             </div>
                         </div>
                     )}
+
+                    {/* APV Advance Funding Modal */}
+                    {isFundModalOpen && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base flex items-center"><Landmark className="mr-2 text-indigo-600" size={18} /> For Funding</h3>
+                                    <button onClick={() => setIsFundModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                                </div>
+                                <form onSubmit={handleFundSubmit} className="p-4 md:p-6 space-y-4">
+                                    <div className="text-sm text-gray-600 mb-2">
+                                        Specify the funding date to allocate cash position. You can set this to a future date for advance funding.
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label>
+                                        <input required list="unpaid-apvs" value={fundData.apvId} onChange={e => setFundData({...fundData, apvId: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type APV Number" />
+                                    </div>
+                                    {(() => {
+                                        const match = apvs.find(a => a.id === fundData.apvId);
+                                        if (match) {
+                                            return (
+                                                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs">
+                                                    <div className="flex justify-between mb-1"><span className="text-indigo-800 font-bold">Vendor:</span> <span>{match.vendor}</span></div>
+                                                    <div className="flex justify-between"><span className="text-indigo-800 font-bold">Amount:</span> <span className="font-black">{formatCurrency(match.amount)}</span></div>
+                                                </div>
+                                            )
+                                        }
+                                        return null;
+                                    })()}
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Funding Date</label>
+                                        <input required type="date" value={fundData.fundDate} onChange={e => setFundData({...fundData, fundDate: e.target.value})} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                                    </div>
+                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                                        <button type="button" onClick={() => setIsFundModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                                        <button type="submit" disabled={!apvs.some(a => a.id === fundData.apvId)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Treasury Check Modal */}
+                    {isCheckModalOpen && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base flex items-center"><FileSignature className="mr-2 text-indigo-600" size={18} /> Update Check Details</h3>
+                                    <button onClick={() => setIsCheckModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                                </div>
+                                <form onSubmit={handleSaveCheck} className="p-4 md:p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">APV Number</label>
+                                        <input required list="unpaid-apvs" value={checkApvId} onChange={handleCheckApvChange} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="Search or type APV Number" />
+                                    </div>
+                                    {(() => {
+                                        const match = apvs.find(a => a.id === checkApvId);
+                                        if (match) {
+                                            return (
+                                                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4 text-xs">
+                                                    <div className="flex justify-between mb-1"><span className="text-slate-500 uppercase font-bold text-[10px]">Vendor:</span> <span className="font-medium">{match.vendor}</span></div>
+                                                    <div className="flex justify-between"><span className="text-slate-500 uppercase font-bold text-[10px]">Amount:</span> <span className="font-black text-indigo-700">{formatCurrency(match.amount)}</span></div>
+                                                </div>
+                                            )
+                                        }
+                                        return null;
+                                    })()}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1">Check Status</label>
+                                        <select required value={checkData.checkStatus} onChange={e => setCheckData({...checkData, checkStatus: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                                            <option value="Pending Check">Pending Check Generation</option>
+                                            <option value="Prepared">Check Prepared</option>
+                                            <option value="Collected">Collected / Released</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1">Check Number</label>
+                                            <input type="text" value={checkData.checkNumber} onChange={e => setCheckData({...checkData, checkNumber: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. CHK-12345" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1">Check Date</label>
+                                            <input type="date" value={checkData.checkDate} onChange={e => setCheckData({...checkData, checkDate: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                                        </div>
+                                    </div>
+
+                                    {checkData.checkStatus === 'Collected' && (
+                                        <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 animate-in fade-in">
+                                            <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wide mb-1">Release / Collection Date</label>
+                                            <input required type="date" value={checkData.releaseDate} onChange={e => setCheckData({...checkData, releaseDate: e.target.value})} className="w-full px-3 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+                                            <p className="text-[10px] text-emerald-600 mt-2 italic">Note: Marking as collected will automatically resolve the APV as "Paid".</p>
+                                        </div>
+                                    )}
+
+                                    <div className="pt-4 flex justify-end space-x-3">
+                                        <button type="button" onClick={() => setIsCheckModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                                        <button type="submit" disabled={!apvs.some(a => a.id === checkApvId)} className="px-4 py-2 bg-indigo-600 text-white disabled:opacity-50 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-700">Save Data</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Super User Reset Modal */}
+                    {isResetFundingModalOpen && apvToReset && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
+                                    <h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Reset APV</h3>
+                                    <button onClick={() => setIsResetFundingModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button>
+                                </div>
+                                <div className="p-4 md:p-6 space-y-4 text-center">
+                                    <p className="text-sm md:text-base text-gray-700">Are you sure you want to remove funding and delete all check details for <strong className="whitespace-nowrap">{apvToReset.id}</strong>?</p>
+                                    <p className="text-xs md:text-sm text-gray-500">This will revert the APV to an unfunded, unpaid state.</p>
+                                </div>
+                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                                    <button onClick={() => setIsResetFundingModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
+                                    <button onClick={executeResetFunding} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center">Remove Data</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <datalist id="unpaid-apvs">
+                        {apvs.filter(a => a.status === 'Unpaid').map(a => <option key={a.id} value={a.id} />)}
+                    </datalist>
 
                     {isApvModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -1038,39 +1646,47 @@
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Expected Delivery</label><input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Business Unit</label><select disabled={accessLevel === 1} value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'}`}><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Amount (₱)</label><input required disabled={accessLevel === 1} type="number" step="0.01" value={newPo.amount} onChange={e => setNewPo({...newPo, amount: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'}`} /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Actual Received Date <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><input type="date" value={newPo.receivedDate || ''} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" /></div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Processor</label><input required disabled={accessLevel === 1} type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'}`} placeholder="e.g., Alex Reyes" /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option></select></div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Gross Amt (₱)</label><input required disabled={accessLevel === 1} type="number" step="0.01" value={newPo.grossAmount} onChange={e => {
+                                            const gross = e.target.value; const discount = newPo.discountAmount || 0;
+                                            const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount)).toString();
+                                            setNewPo({...newPo, grossAmount: gross, amount: net});
+                                        }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-emerald-600">Discount (₱)</label><input disabled={accessLevel === 1} type="number" step="0.01" value={newPo.discountAmount} onChange={e => {
+                                            const discount = e.target.value; const gross = newPo.grossAmount || 0;
+                                            const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount || 0)).toString();
+                                            setNewPo({...newPo, discountAmount: discount, amount: net});
+                                        }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-blue-600">Net Amount (₱)</label><input disabled type="number" value={newPo.amount} className="w-full px-2.5 py-2 border rounded-lg text-sm bg-blue-50 text-blue-800 font-bold border-blue-200 cursor-not-allowed" /></div>
                                     </div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Business Unit</label><select disabled={accessLevel === 1} value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select disabled={accessLevel === 1} value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-[10px] uppercase font-bold text-gray-500">PR Requestor</label>
+                                            <input required disabled={accessLevel === 1} type="text" value={newPo.prRequestor || ''} onChange={e => setNewPo({...newPo, prRequestor: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Juan Santos" />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] uppercase font-bold text-gray-500">Purchasing Processor</label>
+                                            <input required disabled={accessLevel === 1} type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="e.g., Alex Reyes" />
+                                        </div>
+                                    </div>
+                                    
                                     <div>
                                         <label className="text-[10px] uppercase font-bold text-gray-500">Description</label>
-                                        <input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'}`} placeholder="Brief description of items" />
+                                        <input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="Brief description of items" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label>
                                         <textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea>
                                     </div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Save PO</button></div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {isPayApvModalOpen && selectedApvToPay && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-emerald-100 flex justify-between items-center bg-emerald-50"><h3 className="font-semibold text-emerald-900 text-sm md:text-base">Process APV Payment</h3><button onClick={() => setIsPayApvModalOpen(false)} className="text-emerald-600 hover:text-emerald-800"><X size={20} /></button></div>
-                                <form onSubmit={handlePayApv} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-sm text-gray-600 mb-2">Settling payment for <strong>{selectedApvToPay.id}</strong> to {selectedApvToPay.vendor}.</div>
-                                    <div className="text-2xl font-bold text-gray-900 mb-4">{formatCurrency(selectedApvToPay.amount)}</div>
-                                    <div><label className="block text-xs font-medium text-gray-700 mb-1">Date Settled</label><input required type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" /></div>
-                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsPayApvModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
                                 </form>
                             </div>
                         </div>
