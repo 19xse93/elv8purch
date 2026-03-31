@@ -144,6 +144,51 @@
 
         const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount || 0);
 
+        // Smart Date Standardizer (Auto-detects format and converts to YYYY-MM-DD)
+        const standardizeDate = (val) => {
+            if (!val || typeof val !== 'string') return '';
+            val = val.trim();
+            if (!val) return '';
+
+            // 1. Check for Excel serial date format (e.g., 44562 for Jan 1, 2022)
+            if (!isNaN(val) && Number(val) > 20000 && Number(val) < 90000) {
+                const excelDays = parseFloat(val);
+                const d = new Date((excelDays - 25569) * 86400 * 1000);
+                if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+            }
+
+            // 2. Standardize delimiters and try parsing
+            let d = new Date(val);
+
+            // 3. Fallback for DD/MM/YYYY vs MM/DD/YYYY if invalid or misparsed
+            if (isNaN(d.getTime())) {
+                const parts = val.split(/[-/.]/); // Split by dash, slash, or dot
+                if (parts.length === 3) {
+                    // Assume DD/MM/YYYY
+                    d = new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
+                    if (isNaN(d.getTime()) && parts[2].length === 2) {
+                        // Assume DD/MM/YY
+                        d = new Date(`${parts[1]}/${parts[0]}/20${parts[2]}`);
+                    }
+                }
+            }
+
+            // 4. Fallback for textual dates (e.g., 15-Jan-24)
+            if (isNaN(d.getTime())) {
+                d = new Date(val.replace(/-/g, ' '));
+            }
+
+            if (!isNaN(d.getTime())) {
+                const year = d.getFullYear();
+                if (year < 2000 || year > 2100) return ''; // Sanity check for valid range
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
+            return ''; // Failed to parse
+        };
+
         const safeParseDate = (dateStr) => {
             if (!dateStr) return null;
             if (!isNaN(dateStr) && !isNaN(parseFloat(dateStr))) {
@@ -156,7 +201,6 @@
             return d;
         };
 
-        // EXTREMELY SAFE FORMATTER (Fixed previous parameter typo)
         const formatMonthLabel = (monthStr) => {
             try {
                 if (!monthStr || typeof monthStr !== 'string') return 'Unknown';
@@ -726,15 +770,30 @@
                             item.category = item.category || 'General'; 
                             
                             if (importType === 'purchases') {
+                                // Standardize all dates for Purchase Orders
+                                item.prReceivedDate = standardizeDate(item.prReceivedDate);
+                                item.date = standardizeDate(item.date);
+                                item.expectedDelivery = standardizeDate(item.expectedDelivery);
+                                item.receivedDate = standardizeDate(item.receivedDate);
+
                                 item.grossAmount = Number(item.grossAmount?.replace(/[^0-9.-]+/g,"") || item.amount);
                                 item.discountAmount = Number(item.discountAmount?.replace(/[^0-9.-]+/g,"") || 0);
-                                item.paymentTerms = item.paymentTerms || 'Terms'; item.status = item.receivedDate ? 'Invoiced' : 'Pending';
+                                item.paymentTerms = item.paymentTerms || 'Terms'; 
+                                item.status = item.receivedDate ? 'Invoiced' : 'Pending';
                                 item.remarks = item.remarks || ''; item.prRequestor = item.prRequestor || ''; 
                             } else {
+                                // Standardize all dates for APVs
+                                item.invoiceDate = standardizeDate(item.invoiceDate);
+                                item.dueDate = standardizeDate(item.dueDate);
+                                item.settledDate = standardizeDate(item.settledDate);
+                                item.fundedDate = standardizeDate(item.fundedDate);
+                                item.checkDate = standardizeDate(item.checkDate);
+                                item.releaseDate = standardizeDate(item.releaseDate);
+
                                 item.funded = String(item.funded).toLowerCase() === 'true' || item.status === 'Paid';
                                 if (item.funded && !item.fundedDate) item.fundedDate = item.settledDate || TODAY.toISOString().split('T')[0];
                                 item.status = item.status || 'Unpaid'; item.paymentTerms = item.paymentTerms || 'Terms';
-                                item.checkNumber = item.checkNumber || ''; item.checkDate = item.checkDate || ''; item.releaseDate = item.releaseDate || ''; item.checkStatus = item.checkStatus || 'Pending Check';
+                                item.checkNumber = item.checkNumber || ''; item.checkStatus = item.checkStatus || 'Pending Check';
                             }
                             await dbRef.doc(item.id).set(item, { merge: true });
                             successCount++;
@@ -1293,7 +1352,13 @@
                                         {availableMonths.map(m => (<option key={m} value={m}>{formatMonthLabel(m)}</option>))}
                                     </select>
                                     <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Category">
-                                        <option value="All">All Categories</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="General">General/Other</option>
+                                        <option value="All">All Categories</option>
+                                        <option value="Site Rental">Site Rental</option>
+                                        <option value="Acquired Materials">Acquired Materials</option>
+                                        <option value="Services">Services</option>
+                                        <option value="Freshman">Freshman</option>
+                                        <option value="Trading">Trading</option>
+                                        <option value="General">General/Other</option>
                                     </select>
                                     <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Business Unit">
                                         <option value="All">All BUs</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
@@ -1338,7 +1403,7 @@
                                     <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg">
                                         <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wide mb-1 flex items-center"><AlertCircle size={12} className="mr-1"/> Required CSV Headers</label>
                                         <p className="text-xs text-blue-700 font-mono break-all">{importType === 'purchases' ? "id, businessUnit, category, prReceivedDate, date, expectedDelivery, receivedDate, vendor, description, amount, grossAmount, discountAmount, paymentTerms, prRequestor, processorName, remarks" : "id, poId, businessUnit, category, vendor, invoiceDate, dueDate, amount, paymentTerms, status, settledDate"}</p>
-                                        <p className="text-[10px] text-blue-600 mt-1 italic">Note: Dates must be formatted as YYYY-MM-DD.</p>
+                                        <p className="text-[10px] text-blue-600 mt-2 font-bold italic border-t border-blue-200 pt-2"><Sparkles size={10} className="inline mr-1" /> Smart Date Parser is active! You can upload dates as YYYY-MM-DD, MM/DD/YYYY, DD-MM-YYYY, Textual (Jan 5 2024), or Raw Excel Numbers (45230).</p>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">2. Upload File</label>
@@ -1456,7 +1521,7 @@
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Billed Amount (₱)</label><input required type="number" step="0.01" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select value={newApv.category || 'General'} onChange={e => setNewApv({...newApv, category: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select value={newApv.category || 'General'} onChange={e => setNewApv({...newApv, category: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
                                     </div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsApvModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Save APV</button></div>
                                 </form>
@@ -1488,7 +1553,7 @@
                                     </div>
                                     <div className="grid grid-cols-3 gap-3">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Business Unit</label><select disabled={accessLevel === 1} value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select disabled={accessLevel === 1} value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
