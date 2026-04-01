@@ -713,6 +713,12 @@
                 const result = await callGeminiAPI(`Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed.${notes} Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
+            
+            const draftNoCheckEmail = async (apv) => {
+                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
+                const result = await callGeminiAPI(`Write a professional internal email to the Treasury Team regarding APV ${apv.id} for ${apv.vendor} amounting to ${formatCurrency(apv.amount)}. The APV is processed but no check has been created or assigned to it yet. Ask them for a quick status update on the check preparation so we can inform the vendor. Keep it under 100 words. Do not include a subject line. Sign the email as the Accounts Payable Team.`);
+                setCurrentEmailDraft(result); setIsDraftingEmail(false);
+            };
 
             const draftVendorEmail = async (vendorData) => {
                 setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
@@ -1056,12 +1062,14 @@
                         <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & Details</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{(accessLevel === 2 || accessLevel === 3) && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{tabFilteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : tabFilteredApvs.map(apv => {
                             const aging = getAgingCategory(apv.dueDate, apv.status);
+                            const needsCheck = apv.status === 'Unpaid' && !apv.checkNumber;
+                            
                             return (
                                 <tr key={apv.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="p-4 font-bold text-gray-900">{apv.id}</td>
                                     <td className="p-4">
                                         <div className="font-medium">{apv.vendor}</div>
-                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                        <div className="flex items-center gap-1.5 mt-0.5 mb-1.5">
                                             <span className="text-[10px] text-indigo-500">{apv.poId}</span>
                                             <span className="text-gray-300">|</span>
                                             <span className="text-[10px] text-gray-400 uppercase font-black">{apv.businessUnit}</span>
@@ -1069,12 +1077,30 @@
                                                 <span className="text-[9px] px-1.5 py-[1px] rounded bg-purple-50 text-purple-600 border border-purple-200 uppercase font-bold tracking-tighter">{apv.category}</span>
                                             )}
                                         </div>
+                                        {needsCheck && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200 inline-flex items-center" title="No check assigned yet">
+                                                <AlertCircle size={10} className="mr-1"/> Pending Check
+                                            </span>
+                                        )}
+                                        {apv.checkNumber && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 inline-flex items-center" title={`Check Number: ${apv.checkNumber}`}>
+                                                <Check size={10} className="mr-1"/> Check Assigned
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td>
                                     <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>
                                     {(accessLevel === 2 || accessLevel === 3) && (
                                         <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                             <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
+                                            
+                                            {/* AI Check Warning Trigger */}
+                                            {needsCheck && (
+                                                <button onClick={() => draftNoCheckEmail(apv)} className="text-amber-500 hover:text-amber-600 transition-colors" title="Follow up Check Preparation">
+                                                    <Bell size={16} />
+                                                </button>
+                                            )}
+                                            
                                             {accessLevel === 3 && <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>}
                                         </td>
                                     )}
