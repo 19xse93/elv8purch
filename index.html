@@ -126,20 +126,37 @@
         const TODAY = new Date(); 
         TODAY.setHours(0,0,0,0);
 
-        const PERMANENT_API_KEY = "AIzaSyAL27gax3G1dQk8XrjhdLJujMBIP8B4SNg";
-
         // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
-            const apiKey = PERMANENT_API_KEY || "";
-            const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+            const apiKey = ""; // Environment provided API key
+            const modelName = "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } };
+            const payload = { 
+                contents: [{ parts: [{ text: prompt }] }], 
+                systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } 
+            };
+            
+            // Implement Exponential Backoff as requested by system rules
+            const fetchWithRetry = async (retries = 5) => {
+                const delays = [1000, 2000, 4000, 8000, 16000];
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+                        return await response.json();
+                    } catch (err) {
+                        if (i === retries - 1) throw err;
+                        await new Promise(res => setTimeout(res, delays[i]));
+                    }
+                }
+            };
+
             try {
-                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (!response.ok) return `HTTP Error ${response.status}`;
-                const data = await response.json();
+                const data = await fetchWithRetry();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-            } catch (error) { return `Failed to connect to AI: ${error.message}`; }
+            } catch (error) { 
+                return `Failed to connect to AI: ${error.message}`; 
+            }
         };
 
         const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount || 0);
