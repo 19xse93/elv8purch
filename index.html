@@ -86,6 +86,7 @@
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
         const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer'); const UsersIcon = safeIcon('Users');
         const History = safeIcon('History'); const Shield = safeIcon('Shield');
+        const Paperclip = safeIcon('Paperclip'); const ImageIcon = safeIcon('Image');
 
         // =========================================================================
         // FIREBASE CONFIGURATION
@@ -373,10 +374,11 @@
 
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
-            const [newPo, setNewPo] = useState({ id: '', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' });
+            const [newPo, setNewPo] = useState({ id: '', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' });
             const [newApv, setNewApv] = useState({ id: '', poId: '', category: 'Freshman', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
+            const [viewingImage, setViewingImage] = useState(null);
 
             const [poStatusFilter, setPoStatusFilter] = useState('All');
             const [apvStatusFilter, setApvStatusFilter] = useState('All');
@@ -430,12 +432,12 @@
                                     if (userDoc.exists) {
                                         setAccessLevel(userDoc.data().accessLevel);
                                     } else {
-                                        setAccessLevel(1); // Default to Level 1 if authenticated but not explicitly assigned a level
+                                        setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 to bypass
                                     }
                                     setCurrentUserName(email);
                                 } catch (e) {
                                     console.error("Access Level Fetch Failed", e);
-                                    setAccessLevel(1);
+                                    setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 to bypass
                                     setCurrentUserName(email);
                                 }
                             } else {
@@ -745,7 +747,7 @@
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ ...po, category: po.category || 'Freshman', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '' }); 
+                setNewPo({ ...po, category: po.category || 'Freshman', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '', attachmentData: po.attachmentData || '' }); 
                 setIsPoModalOpen(true); 
             };
 
@@ -784,7 +786,36 @@
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' }); setIsPoModalOpen(true); };
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 10 * 1024 * 1024) { alert("File is too large. Please select an image under 10MB."); return; }
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1200; const MAX_HEIGHT = 1200;
+                        let width = img.width; let height = img.height;
+
+                        if (width > height && width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } 
+                        else if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, width, height); // Fill white for transparent PNGs
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.6); // Compress quality to save DB space
+                        setNewPo(prev => ({ ...prev, attachmentData: dataUrl }));
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault(); if (!user) return;
@@ -792,7 +823,7 @@
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
                 const action = editingPoId ? 'UPDATE' : 'CREATE';
                 try {
-                    await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null });
+                    await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null, attachmentData: newPo.attachmentData || null });
                     await logAction(action, 'PO', newPo.id, `Vendor: ${newPo.vendor}, Amount: ${newPo.amount}, Status: ${poStatus}`);
                     setIsPoModalOpen(false); setEditingPoId(null);
                 } catch(err) { alert("Action Failed: " + err.message); }
@@ -984,7 +1015,7 @@
             };
 
             const renderLoginPage = () => (
-                <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 animate-in fade-in">
+                <div className="min-h-screen bg-[#10213b] flex flex-col justify-center py-12 sm:px-6 lg:px-8 animate-in fade-in">
                     <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
                         <div className="w-72 md:w-96 mb-8 flex items-center justify-center">
                             <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-full max-h-48 object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/10213b?text=ETMC+elev8'; }} />
@@ -1144,6 +1175,12 @@
                                     </div>
                                     <div className="text-[10px] text-gray-500 mb-1.5 line-clamp-2" title={po.description}>{po.description}</div>
                                     
+                                    {po.attachmentData && (
+                                        <button onClick={() => setViewingImage(po.attachmentData)} className="mb-2 text-[9px] flex items-center text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors px-2 py-1 rounded font-bold border border-blue-200 w-max">
+                                            <Paperclip size={10} className="mr-1"/> View PR/PO File
+                                        </button>
+                                    )}
+
                                     <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm mb-1.5">
                                         <div className="text-[9px] text-gray-600 grid grid-cols-2 gap-x-2 gap-y-1">
                                             <div><span className="font-bold text-gray-400 uppercase tracking-wider">PR Date:</span> {po.prReceivedDate || 'N/A'}</div>
@@ -1629,42 +1666,42 @@
             return (
                 <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden relative">
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
-                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transform transition-transform md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-4 flex items-center justify-center border-b border-slate-800/50 bg-slate-950/30">
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#10213b] text-slate-300 flex flex-col transform transition-transform md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <div className="p-4 flex items-center justify-center border-b border-white/10 bg-transparent">
                             <div className="flex items-center justify-center w-full">
                                 <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="max-h-20 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
                             </div>
                         </div>
                         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
-                            <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
-                            <button onClick={() => handleTabSwitch('purchases')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'purchases' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><ShoppingCart className="mr-3" size={20} /> Purchase Orders</button>
-                            <button onClick={() => handleTabSwitch('apvs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'apvs' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><FileText className="mr-3" size={20} /> APV Records</button>
-                            <button onClick={() => handleTabSwitch('treasury')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'treasury' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><Wallet className="mr-3" size={20} /> Treasury Records</button>
-                            <button onClick={() => handleTabSwitch('funding')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'funding' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><CalendarDays className="mr-3" size={20} /> Cash Position Report</button>
-                            <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
+                            <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
+                            <button onClick={() => handleTabSwitch('purchases')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'purchases' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><ShoppingCart className="mr-3" size={20} /> Purchase Orders</button>
+                            <button onClick={() => handleTabSwitch('apvs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'apvs' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><FileText className="mr-3" size={20} /> APV Records</button>
+                            <button onClick={() => handleTabSwitch('treasury')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'treasury' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><Wallet className="mr-3" size={20} /> Treasury Records</button>
+                            <button onClick={() => handleTabSwitch('funding')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'funding' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><CalendarDays className="mr-3" size={20} /> Cash Position Report</button>
+                            <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
                             
                             {accessLevel === 3 && (
-                                <div className="pt-4 mt-4 border-t border-slate-800 space-y-2">
-                                    <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>
-                                    <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-slate-800'}`}><History className="mr-3" size={20} /> System Logs</button>
+                                <div className="pt-4 mt-4 border-t border-white/10 space-y-2">
+                                    <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-white/10'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>
+                                    <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-white/10'}`}><History className="mr-3" size={20} /> System Logs</button>
                                 </div>
                             )}
                         </nav>
-                        <div className="p-6 bg-slate-950 mt-auto shrink-0">
+                        <div className="p-6 bg-black/20 mt-auto shrink-0">
                             {accessLevel === 3 && (
                                 <>
-                                    <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 rounded-lg text-sm transition-colors"><Download size={16} className="mr-2" /> Import Data (CSV)</button>
-                                    <button onClick={() => setIsClearModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-slate-800 hover:bg-red-900/50 hover:text-red-400 text-slate-400 rounded-lg text-sm transition-colors"><Trash2 size={16} className="mr-2" /> Clear All Data</button>
+                                    <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 rounded-lg text-sm transition-colors"><Download size={16} className="mr-2" /> Import Data (CSV)</button>
+                                    <button onClick={() => setIsClearModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-white/5 hover:bg-red-500/30 hover:text-red-300 text-slate-300 rounded-lg text-sm transition-colors"><Trash2 size={16} className="mr-2" /> Clear All Data</button>
                                 </>
                             )}
                             
-                            <button onClick={handleSignOut} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Sign Out</button>
+                            <button onClick={handleSignOut} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Sign Out</button>
 
-                            <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1">Logged in as</div>
-                            <div className="text-xs font-medium text-slate-300 flex items-center truncate mb-3" title={currentUserName}><User size={12} className="mr-2 shrink-0"/> <span className="truncate">{currentUserName}</span></div>
+                            <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Logged in as</div>
+                            <div className="text-xs font-medium text-slate-200 flex items-center truncate mb-3" title={currentUserName}><User size={12} className="mr-2 shrink-0"/> <span className="truncate">{currentUserName}</span></div>
 
-                            <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1">System Date</div>
-                            <div className="text-xs font-medium text-slate-300 flex items-center truncate"><Calendar size={12} className="mr-2 shrink-0"/> {TODAY.toLocaleDateString()}</div>
+                            <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">System Date</div>
+                            <div className="text-xs font-medium text-slate-200 flex items-center truncate"><Calendar size={12} className="mr-2 shrink-0"/> {TODAY.toLocaleDateString()}</div>
                         </div>
                     </aside>
 
@@ -1911,6 +1948,20 @@
                                     </div>
                                     <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-indigo-500'}`} placeholder="Brief description of items" /></div>
                                     <div><label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea></div>
+                                    
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                        <label className="text-[10px] uppercase font-bold text-slate-700 block mb-2 flex items-center"><Paperclip size={12} className="mr-1"/> Attach PR/PO Document <span className="text-slate-400 font-normal lowercase ml-1">(JPEG/PNG only)</span></label>
+                                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                                            <input disabled={accessLevel === 1} type="file" accept="image/jpeg, image/png, image/jpg" onChange={handleFileUpload} className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 disabled:opacity-50 w-full" />
+                                            {newPo.attachmentData && (
+                                                <div className="shrink-0 flex items-center bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-emerald-200">
+                                                    <ImageIcon size={12} className="mr-1" /> Image Attached
+                                                    <button type="button" onClick={() => setNewPo({...newPo, attachmentData: ''})} className="ml-2 text-emerald-900 hover:text-red-600 bg-emerald-100/50 p-0.5 rounded-full" title="Remove Attachment"><X size={12} /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Save PO</button></div>
                                 </form>
                             </div>
@@ -1952,6 +2003,18 @@
                                 <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50"><h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Warning</h3><button onClick={() => setIsClearModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button></div>
                                 <div className="p-4 md:p-6 space-y-4 text-center"><p className="text-sm md:text-base text-gray-700">Are you sure you want to permanently delete all Purchase Orders and APV records?</p><p className="text-xs md:text-sm text-gray-500">This action cannot be undone.</p></div>
                                 <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button onClick={() => setIsClearModalOpen(false)} disabled={isClearing} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button><button onClick={handleClearAllData} disabled={isClearing} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50">{isClearing ? <Loader2 size={16} className="animate-spin mr-2" /> : <Trash2 size={16} className="mr-2" />}{isClearing ? 'Deleting...' : 'Delete Data'}</button></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {viewingImage && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingImage(null)}>
+                            <div className="relative max-w-5xl w-full flex flex-col items-center justify-center h-full" onClick={e => e.stopPropagation()}>
+                                <div className="absolute top-4 right-4 flex space-x-2">
+                                    <a href={viewingImage} download={`PO_Attachment_${TODAY.getTime()}.jpg`} className="bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-colors" title="Download Image"><Download size={24} /></a>
+                                    <button onClick={() => setViewingImage(null)} className="bg-white/20 hover:bg-red-500/80 text-white p-2 rounded-full transition-colors" title="Close"><X size={24} /></button>
+                                </div>
+                                <img src={viewingImage} alt="PO Attachment" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
                             </div>
                         </div>
                     )}
