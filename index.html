@@ -3,40 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProcureMonitor | APV Aging Dashboard</title>
-
-    <!-- SPEED OPTIMIZATION: Pre-connect to CDNs to drastically speed up download times -->
+    <title>ETMC elev8 | APV Aging Dashboard</title>
+    
+    <!-- SPEED OPTIMIZATION: Pre-connect to CDNs -->
     <link rel="preconnect" href="https://cdn.tailwindcss.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://www.gstatic.com">
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
     
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- FIX: Mask injected module loaders to prevent deployment conflicts -->
     <script>
-        window.onerror = function(msg, url, line, col, error) {
-            document.getElementById('root').innerHTML = '<div style="background:#fee2e2; color:#991b1b; padding:2rem; min-height:100vh; font-family:sans-serif;">' +
-                '<h1 style="font-size:1.5rem; font-weight:bold; margin-bottom:1rem;">Fatal Global Error</h1>' +
-                '<p>The dashboard scripts failed to load correctly.</p><p><strong>Error:</strong> ' + msg + '</p>' +
-                '<pre style="background:#fecaca; padding:1rem; margin-top:1rem; overflow-x:auto;">' + (error ? error.stack : 'No stack trace') + '</pre></div>';
-        };
+        window.__define = window.define; window.__exports = window.exports; window.__module = window.module;
+        window.define = undefined; window.exports = undefined; window.module = undefined;
     </script>
+
+    <!-- Reliable Enterprise CDNs -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+    
+    <!-- Firebase core components -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <!-- Restore module loaders -->
+    <script>
+        window.define = window.__define; window.exports = window.__exports; window.module = window.__module;
+    </script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; }
+        .animate-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white; flex-direction: column;}
+        #root:empty::after { content: "Application Error. React failed to mount. Check console."; color: #ef4444; font-family: monospace; font-size: 1rem; margin-top: 1rem;}
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div id="initial-loader" style="text-align: center; color: #4f46e5; font-family: sans-serif; padding-top: 40vh;">
+            <svg class="animate-spin h-10 w-10 mx-auto mb-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p style="font-weight: 700; letter-spacing: 0.1em;">STARTING SYSTEM...</p>
+        </div>
+    </div>
 
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
         
-        // --- Safe Icons Extraction (Highly Optimized for Performance) ---
+        // --- High-Performance Safe Icons ---
+        // This instantly creates SVGs bypassing the slow DOM scanner
         const safeIcon = (iconName) => {
-            return ({ size = 24, className = '' }) => {
-                // FAST RENDER: Directly generate SVG strings instead of heavy DOM manipulation per icon
-                try {
-                    if (window.lucide && window.lucide.icons[iconName]) {
-                        const svgString = window.lucide.icons[iconName].toSvg({ width: size, height: size, class: className });
-                        return <span dangerouslySetInnerHTML={{ __html: svgString }} className="inline-flex items-center justify-center shrink-0" />;
+            return ({ size = 24, className = '', color = 'currentColor' }) => {
+                const iconRef = useRef(null);
+                
+                useEffect(() => {
+                    if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
+                        try {
+                            const svgElement = window.lucide.createElement(window.lucide.icons[iconName]);
+                            svgElement.setAttribute('width', size);
+                            svgElement.setAttribute('height', size);
+                            svgElement.setAttribute('stroke', color);
+                            // Only add class if there isn't a class conflict on the inner SVG
+                            if (className) svgElement.setAttribute('class', `lucide lucide-${iconName}`); 
+                            
+                            iconRef.current.innerHTML = '';
+                            iconRef.current.appendChild(svgElement);
+                        } catch (e) { console.warn("Icon error:", e); }
                     }
-                } catch (e) { console.warn("Icon render error", e); }
-                return <span style={{width: size, height: size}} className={`inline-block shrink-0 ${className}`}></span>;
+                }, [size, className, color]);
+                
+                return <span ref={iconRef} className={`inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}></span>;
             };
         };
 
@@ -51,7 +96,7 @@
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
         const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer'); const UsersIcon = safeIcon('Users');
-        const History = safeIcon('History'); const Shield = safeIcon('Shield'); const Paperclip = safeIcon('Paperclip'); const ImageIcon = safeIcon('Image');
+        const History = safeIcon('History'); const Shield = safeIcon('Shield'); const Paperclip = safeIcon('Paperclip'); const ImageIcon = safeIcon('Image'); const Eye = safeIcon('Eye');
 
         // =========================================================================
         // FIREBASE CONFIGURATION
@@ -277,7 +322,7 @@
                     return (
                         <div className="p-8 bg-red-50 text-red-900 min-h-screen font-sans flex flex-col justify-center w-full">
                             <div className="max-w-4xl mx-auto w-full">
-                                <h1 className="text-3xl font-bold mb-4 flex items-center"><AlertTriangle className="mr-3 text-red-600" size={32} /> UI Rendering Crash</h1>
+                                <h1 className="text-3xl font-bold mb-4 flex items-center">UI Rendering Crash</h1>
                                 <p className="mb-4 text-lg">The dashboard encountered a fatal rendering error.</p>
                                 <div className="bg-red-100 p-6 rounded-lg overflow-auto border border-red-300 shadow-inner">
                                     <p className="font-bold text-red-700">{this.state.error && this.state.error.toString()}</p>
@@ -318,6 +363,7 @@
             const [loginEmail, setLoginEmail] = useState('');
             const [loginPassword, setLoginPassword] = useState('');
             const [loginError, setLoginError] = useState(false);
+            const [showPassword, setShowPassword] = useState(false);
 
             // Modals & Action States
             const [insights, setInsights] = useState(null);
@@ -367,7 +413,6 @@
                 catch(e) { throw new Error("Firestore mapping failed."); }
             };
 
-            // Global Audit Logger Function
             const logAction = async (action, entityType, entityId, details) => {
                 if (!user) return;
                 try {
@@ -384,7 +429,6 @@
                 } catch (e) { console.warn("Failed to log action:", e); }
             };
 
-            // Enhanced Secure Authentication Initialization
             useEffect(() => {
                 let unsubscribe = () => {};
                 try {
@@ -395,7 +439,6 @@
                             setUser(u);
                             setIsLoggedIn(true);
                             
-                            // Fetch access level for logged-in user email
                             let email = u.email;
                             if (email) {
                                 try {
@@ -403,16 +446,15 @@
                                     if (userDoc.exists) {
                                         setAccessLevel(userDoc.data().accessLevel);
                                     } else {
-                                        setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 for setup
+                                        setAccessLevel(3); // FORCED SUPERUSER for initial setup
                                     }
                                     setCurrentUserName(email);
                                 } catch (e) {
                                     console.error("Access Level Fetch Failed", e);
-                                    setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 for setup
+                                    setAccessLevel(3); 
                                     setCurrentUserName(email);
                                 }
                             } else {
-                                // Fallback for Canvas Preview custom token auth
                                 setAccessLevel(3);
                                 setCurrentUserName('Admin (Canvas Preview)');
                             }
@@ -424,7 +466,6 @@
                         setIsDataLoading(false);
                     });
 
-                    // Support for Canvas Preview Environment Injection
                     if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token && !auth.currentUser) {
                         auth.signInWithCustomToken(window.__initial_auth_token).catch(e => console.warn("Canvas auth failed", e));
                     }
@@ -455,7 +496,6 @@
                             setPurchases(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
                         },
                         (error) => {
-                            console.warn("Firestore listener error (purchases):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
                         }
@@ -467,7 +507,6 @@
                             setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
                         },
                         (error) => {
-                            console.warn("Firestore listener error (apvs):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
                         }
@@ -478,7 +517,7 @@
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setAppUsers(loadedData);
                         },
-                        (error) => { console.warn("Firestore listener error (users):", error); }
+                        (error) => { console.warn("Users listener error:", error); }
                     );
 
                     unsubLogs = dbRef.collection('audit_logs').onSnapshot(
@@ -486,7 +525,7 @@
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setAuditLogs(loadedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
                         },
-                        (error) => { console.warn("Firestore listener error (logs):", error); }
+                        (error) => { console.warn("Logs listener error:", error); }
                     );
 
                 } catch (error) {
@@ -554,7 +593,6 @@
             const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
             const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
 
-            // Filter Audit Logs based on Global Search
             const filteredAuditLogs = useMemo(() => {
                 const query = globalSearchQuery.toLowerCase();
                 if (!query) return auditLogs;
@@ -878,7 +916,6 @@
                 setIsClearing(false); setIsClearModalOpen(false);
             };
 
-            // Enhanced Secure Authentication: Add User Access Level
             const handleAddUser = async (e) => {
                 e.preventDefault();
                 if (!user || accessLevel !== 3) return;
@@ -977,7 +1014,6 @@
                 document.body.removeChild(textArea);
             };
 
-            // Enhanced Secure Authentication: Standard Login
             const handleLoginSubmit = async (e) => {
                 e.preventDefault();
                 setIsDataLoading(true);
@@ -1003,7 +1039,6 @@
             };
 
             const renderLoginPage = () => {
-                const [showPassword, setShowPassword] = useState(false);
                 return (
                     <div className="min-h-screen flex flex-col justify-center p-4 animate-in fade-in" style={{ backgroundColor: '#11243E' }}>
                         <div className="mb-8 w-full max-w-md mx-auto flex justify-center">
@@ -1032,7 +1067,7 @@
                                         <div className="absolute left-3 text-gray-400"><Lock size={18} /></div>
                                         <input required type={showPassword ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all" placeholder="••••••••" />
                                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors">
-                                            {showPassword ? <X size={18} /> : <Eye size={18} />} {/* Fallback if eye icon isn't loaded */}
+                                            {showPassword ? <X size={18} /> : <Eye size={18} />} 
                                         </button>
                                     </div>
                                 </div>
