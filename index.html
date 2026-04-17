@@ -1608,9 +1608,8 @@
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
                     <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transform transition-transform md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-4 flex items-center justify-center border-b border-slate-800/50 bg-slate-950/30">
-                            <div className="bg-white p-2 rounded-xl flex items-center justify-center w-full">
-                                <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="max-h-12 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
-                            </div>
+                             <img src="./ETMC_LOGO.png" alt="ETMC elev8" className="max-h-12 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
+                         
                         </div>
                         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
                             <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
