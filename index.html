@@ -4,55 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProcureMonitor | APV Aging Dashboard</title>
+
+    <!-- SPEED OPTIMIZATION: Pre-connect to CDNs to drastically speed up download times -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FIX: Mask injected module loaders to prevent Netlify conflicts -->
-    <script>
-        window.__define = window.define; window.__exports = window.exports; window.__module = window.module;
-        window.define = undefined; window.exports = undefined; window.module = undefined;
-    </script>
-
-    <!-- Reliable Enterprise CDNs to prevent network blocks -->
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
-    
-    <!-- Firebase core components -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
-    <!-- Restore module loaders -->
-    <script>
-        window.define = window.__define; window.exports = window.__exports; window.module = window.__module;
-    </script>
-    
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; }
-        .animate-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        /* Fallback CSS if React fatally unmounts */
-        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white; flex-direction: column;}
-        #root:empty::after { content: "Application Error. React failed to mount. Check console."; color: #ef4444; font-family: monospace; font-size: 1rem; margin-top: 1rem;}
-    </style>
-</head>
-<body>
-    <div id="root">
-        <!-- Loader changed to PURPLE to verify cache is cleared -->
-        <div id="initial-loader" style="text-align: center; color: #4f46e5; font-family: sans-serif; padding-top: 40vh;">
-            <svg class="animate-spin h-10 w-10 mx-auto mb-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p style="font-weight: 700; letter-spacing: 0.1em;">STARTING SYSTEM...</p>
-        </div>
-    </div>
-
-    <!-- Global Error Catcher -->
+    <!-- FIX: Mask injected module loaders to prevent deployment conflicts -->
     <script>
         window.onerror = function(msg, url, line, col, error) {
             document.getElementById('root').innerHTML = '<div style="background:#fee2e2; color:#991b1b; padding:2rem; min-height:100vh; font-family:sans-serif;">' +
@@ -65,24 +26,17 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
         
-        // --- Safe Icons Extraction ---
+        // --- Safe Icons Extraction (Highly Optimized for Performance) ---
         const safeIcon = (iconName) => {
             return ({ size = 24, className = '' }) => {
-                const iconRef = useRef(null);
-                useEffect(() => {
-                    try {
-                        if (window.lucide && window.lucide.icons[iconName] && iconRef.current) {
-                            iconRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
-                            window.lucide.createIcons({
-                                icons: { [iconName]: window.lucide.icons[iconName] },
-                                nameAttr: 'data-lucide',
-                                attrs: { width: size, height: size, class: className },
-                                root: iconRef.current
-                            });
-                        }
-                    } catch (e) { console.warn("Icon load error", e); }
-                }, [size, className]);
-                return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
+                // FAST RENDER: Directly generate SVG strings instead of heavy DOM manipulation per icon
+                try {
+                    if (window.lucide && window.lucide.icons[iconName]) {
+                        const svgString = window.lucide.icons[iconName].toSvg({ width: size, height: size, class: className });
+                        return <span dangerouslySetInnerHTML={{ __html: svgString }} className="inline-flex items-center justify-center shrink-0" />;
+                    }
+                } catch (e) { console.warn("Icon render error", e); }
+                return <span style={{width: size, height: size}} className={`inline-block shrink-0 ${className}`}></span>;
             };
         };
 
@@ -96,10 +50,11 @@
         const Activity = safeIcon('Activity'); const Unlock = safeIcon('Unlock'); const User = safeIcon('User');
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
-        const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer');
+        const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer'); const UsersIcon = safeIcon('Users');
+        const History = safeIcon('History'); const Shield = safeIcon('Shield'); const Paperclip = safeIcon('Paperclip'); const ImageIcon = safeIcon('Image');
 
         // =========================================================================
-        // NETLIFY CONFIGURATION - UPDATE THIS WITH YOUR OWN FIREBASE CREDENTIALS
+        // FIREBASE CONFIGURATION
         // =========================================================================
         const customNetlifyConfig = {
             apiKey: "AIzaSyACvR7KEzJs719E0JJtFiDpiZk0kHYnQyE",
@@ -115,36 +70,51 @@
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
             try { firebaseConfig = JSON.parse(__firebase_config); } catch(e) {}
         }
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-procurement-app-v2';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'procure-monitor-prod';
         
         try {
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             }
-        } catch (e) { console.error("Firebase init global error:", e); }
+        } catch (e) { console.error("Firebase init error:", e); }
 
         const TODAY = new Date(); 
         TODAY.setHours(0,0,0,0);
 
-        const PERMANENT_API_KEY = "AIzaSyAL27gax3G1dQk8XrjhdLJujMBIP8B4SNg";
-
         // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
-            const apiKey = PERMANENT_API_KEY || "";
-            const modelName = apiKey ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+            const apiKey = ""; 
+            const modelName = "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } };
+            const payload = { 
+                contents: [{ parts: [{ text: prompt }] }], 
+                systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } 
+            };
+            
+            const fetchWithRetry = async (retries = 5) => {
+                const delays = [1000, 2000, 4000, 8000, 16000];
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+                        return await response.json();
+                    } catch (err) {
+                        if (i === retries - 1) throw err;
+                        await new Promise(res => setTimeout(res, delays[i]));
+                    }
+                }
+            };
+
             try {
-                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (!response.ok) return `HTTP Error ${response.status}`;
-                const data = await response.json();
+                const data = await fetchWithRetry();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-            } catch (error) { return `Failed to connect to AI: ${error.message}`; }
+            } catch (error) { 
+                return `Failed to connect to AI: ${error.message}`; 
+            }
         };
 
         const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount || 0);
 
-        // Smart Date Standardizer
         const standardizeDate = (val) => {
             if (!val || typeof val !== 'string') return '';
             val = val.trim();
@@ -326,9 +296,12 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
             
+            // Core State
             const [user, setUser] = useState(null);
             const [purchases, setPurchases] = useState([]);
             const [apvs, setApvs] = useState([]);
+            const [appUsers, setAppUsers] = useState([]);
+            const [auditLogs, setAuditLogs] = useState([]);
             const [isDataLoading, setIsDataLoading] = useState(true);
             const [dbError, setDbError] = useState(false);
             const [dbErrorMessage, setDbErrorMessage] = useState("");
@@ -338,11 +311,15 @@
             const [selectedCategory, setSelectedCategory] = useState('All');
             const [selectedMonth, setSelectedMonth] = useState('All');
 
+            // Authentication & Authorization
             const [accessLevel, setAccessLevel] = useState(0); 
-            const [showAdminLogin, setShowAdminLogin] = useState(false);
-            const [adminPassword, setAdminPassword] = useState('');
-            const [adminError, setAdminError] = useState(false);
+            const [currentUserName, setCurrentUserName] = useState('');
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [loginEmail, setLoginEmail] = useState('');
+            const [loginPassword, setLoginPassword] = useState('');
+            const [loginError, setLoginError] = useState(false);
 
+            // Modals & Action States
             const [insights, setInsights] = useState(null);
             const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
             const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -350,7 +327,8 @@
             const [isDraftingEmail, setIsDraftingEmail] = useState(false);
             const [copySuccess, setCopySuccess] = useState(false);
 
-            // Modals
+            const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+            const [newUserAccount, setNewUserAccount] = useState({ email: '', accessLevel: 1 });
             const [isPoModalOpen, setIsPoModalOpen] = useState(false);
             const [isApvModalOpen, setIsApvModalOpen] = useState(false);
             const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -364,10 +342,11 @@
             const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
             const [checkApvId, setCheckApvId] = useState('');
             const [checkData, setCheckData] = useState({ checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
+            const [viewingImage, setViewingImage] = useState(null);
 
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
-            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' });
+            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' });
             const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
@@ -388,53 +367,84 @@
                 catch(e) { throw new Error("Firestore mapping failed."); }
             };
 
+            // Global Audit Logger Function
+            const logAction = async (action, entityType, entityId, details) => {
+                if (!user) return;
+                try {
+                    const logEntry = {
+                        id: crypto.randomUUID(),
+                        timestamp: new Date().toISOString(),
+                        user: currentUserName || 'System',
+                        action: action, 
+                        entityType: entityType, 
+                        entityId: entityId,
+                        details: details
+                    };
+                    await getDbRef().collection('audit_logs').doc(logEntry.id).set(logEntry);
+                } catch (e) { console.warn("Failed to log action:", e); }
+            };
+
+            // Enhanced Secure Authentication Initialization
             useEffect(() => {
                 let unsubscribe = () => {};
-                const initAuth = async () => {
-                    try {
-                        const auth = firebase.auth();
-                        let currentUser = auth.currentUser;
-                        if (!currentUser) {
-                            if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                                const cred = await auth.signInWithCustomToken(window.__initial_auth_token);
-                                currentUser = cred.user;
-                            } else {
-                                const cred = await auth.signInAnonymously();
-                                currentUser = cred.user;
-                            }
-                        }
-                    } catch (error) { 
-                        console.error("Firebase Auth failed:", error); 
-                        setDbError(true);
-                        setDbErrorMessage(`Authentication failed. Make sure Anonymous Auth is enabled in Firebase. (${error.message})`);
-                        setIsDataLoading(false);
-                    }
-                };
-                
                 try {
-                    initAuth().then(() => {
-                        unsubscribe = firebase.auth().onAuthStateChanged((u) => {
+                    const auth = firebase.auth();
+                    
+                    unsubscribe = auth.onAuthStateChanged(async (u) => {
+                        if (u) {
                             setUser(u);
-                            if (!u && !dbError) {
-                                setDbError(true);
-                                setDbErrorMessage("Auth listener returned null. Session disconnected.");
-                                setIsDataLoading(false);
+                            setIsLoggedIn(true);
+                            
+                            // Fetch access level for logged-in user email
+                            let email = u.email;
+                            if (email) {
+                                try {
+                                    const userDoc = await getDbRef().collection('appUsers').doc(email).get();
+                                    if (userDoc.exists) {
+                                        setAccessLevel(userDoc.data().accessLevel);
+                                    } else {
+                                        setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 for setup
+                                    }
+                                    setCurrentUserName(email);
+                                } catch (e) {
+                                    console.error("Access Level Fetch Failed", e);
+                                    setAccessLevel(3); // FORCED SUPERUSER: Default to Level 3 for setup
+                                    setCurrentUserName(email);
+                                }
+                            } else {
+                                // Fallback for Canvas Preview custom token auth
+                                setAccessLevel(3);
+                                setCurrentUserName('Admin (Canvas Preview)');
                             }
-                        });
-                    }).catch(e => {
-                        setDbError(true); setDbErrorMessage(e.message); setIsDataLoading(false);
+                        } else {
+                            setUser(null);
+                            setIsLoggedIn(false);
+                            setAccessLevel(0);
+                        }
+                        setIsDataLoading(false);
                     });
-                } catch(e) {
-                    setDbError(true); setDbErrorMessage("Firebase SDK not loaded."); setIsDataLoading(false);
+
+                    // Support for Canvas Preview Environment Injection
+                    if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token && !auth.currentUser) {
+                        auth.signInWithCustomToken(window.__initial_auth_token).catch(e => console.warn("Canvas auth failed", e));
+                    }
+                    
+                } catch (error) {
+                    console.error("Firebase SDK Initialization Error:", error);
+                    setDbError(true);
+                    setDbErrorMessage(error.message);
+                    setIsDataLoading(false);
                 }
-                
+
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
-                if (!user) return;
+                if (!user || !isLoggedIn) return;
                 let unsubPurchases = () => {};
                 let unsubApvs = () => {};
+                let unsubUsers = () => {};
+                let unsubLogs = () => {};
                 
                 try {
                     const dbRef = getDbRef();
@@ -448,7 +458,6 @@
                             console.warn("Firestore listener error (purchases):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
-                            setIsDataLoading(false);
                         }
                     );
 
@@ -456,24 +465,38 @@
                         (snapshot) => {
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                            setIsDataLoading(false);
                         },
                         (error) => {
                             console.warn("Firestore listener error (apvs):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
-                            setIsDataLoading(false);
                         }
                     );
+
+                    unsubUsers = dbRef.collection('appUsers').onSnapshot(
+                        (snapshot) => {
+                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            setAppUsers(loadedData);
+                        },
+                        (error) => { console.warn("Firestore listener error (users):", error); }
+                    );
+
+                    unsubLogs = dbRef.collection('audit_logs').onSnapshot(
+                        (snapshot) => {
+                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            setAuditLogs(loadedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+                        },
+                        (error) => { console.warn("Firestore listener error (logs):", error); }
+                    );
+
                 } catch (error) {
                     console.error("Critical Firebase Error in useEffect:", error);
                     setDbError(true);
                     setDbErrorMessage(error.message);
-                    setIsDataLoading(false);
                 }
 
-                return () => { unsubPurchases(); unsubApvs(); };
-            }, [user]);
+                return () => { unsubPurchases(); unsubApvs(); unsubUsers(); unsubLogs(); };
+            }, [user, isLoggedIn]);
 
             const getItemCategory = (item) => item.category || 'General';
 
@@ -531,6 +554,19 @@
             const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
             const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
 
+            // Filter Audit Logs based on Global Search
+            const filteredAuditLogs = useMemo(() => {
+                const query = globalSearchQuery.toLowerCase();
+                if (!query) return auditLogs;
+                return auditLogs.filter(log => 
+                    (log.user && log.user.toLowerCase().includes(query)) ||
+                    (log.action && log.action.toLowerCase().includes(query)) ||
+                    (log.entityType && log.entityType.toLowerCase().includes(query)) ||
+                    (log.entityId && log.entityId.toLowerCase().includes(query)) ||
+                    (log.details && log.details.toLowerCase().includes(query))
+                );
+            }, [auditLogs, globalSearchQuery]);
+
             const { totalPurchases, totalSavings, slowestVendor, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
                 let tPurchases = 0; let tSavings = 0; let pDeliveries = 0; let tOutstanding = 0;
                 
@@ -549,13 +585,11 @@
                 baseFilteredPurchases.forEach(p => {
                     tPurchases += Number(p.amount || 0); tSavings += Number(p.discountAmount || 0);
                     
-                    // Always calculate processing time PR to PO
                     if (p.prReceivedDate && p.date) {
                         const diff = getDaysDiff(p.prReceivedDate, p.date);
                         if (diff !== null && diff >= 0) { totalProcessingDays += diff; processedCount++; }
                     }
 
-                    // ONLY calculate delivery metrics if it's NOT Site Rental or Services
                     const isServiceOrRental = p.category === 'Site Rental' || p.category === 'Services';
                     
                     if (!isServiceOrRental) {
@@ -625,12 +659,19 @@
             const handleFundSubmit = async (e) => {
                 e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
                 const targetApv = apvs.find(a => a.id === fundData.apvId); if (!targetApv) return;
-                try { await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); setIsFundModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); 
+                    await logAction('FUND', 'APV', targetApv.id, `Allocated funds. Vendor: ${targetApv.vendor}, Amount: ${targetApv.amount}`);
+                    setIsFundModalOpen(false); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleUnfund = async (apv) => {
                 if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
-                try { await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); 
+                    await logAction('UNFUND', 'APV', apv.id, `Removed funding state. Vendor: ${apv.vendor}`);
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openCheckModal = (apv = null) => {
@@ -669,19 +710,56 @@
                     settledDate: isCollected ? checkData.releaseDate : null
                 };
                 
-                try { await getDbRef().collection('apvs').doc(targetApv.id).update(updates); setIsCheckModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(targetApv.id).update(updates); 
+                    await logAction('UPDATE_CHECK', 'APV', targetApv.id, `Status: ${checkData.checkStatus}, Check #: ${checkData.checkNumber}`);
+                    setIsCheckModalOpen(false); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const confirmResetFunding = (apv) => { setApvToReset(apv); setIsResetFundingModalOpen(true); };
             const executeResetFunding = async () => {
                 if (!user || accessLevel !== 3 || !apvToReset) return;
                 const updates = { funded: false, fundedDate: null, checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check', status: 'Unpaid', settledDate: null };
-                try { await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); setIsResetFundingModalOpen(false); setApvToReset(null); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); 
+                    await logAction('RESET_FUNDING', 'APV', apvToReset.id, `Cleared all funding and check history.`);
+                    setIsResetFundingModalOpen(false); setApvToReset(null); 
+                } catch(err) { alert("Action Failed: " + err.message); }
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 10 * 1024 * 1024) { alert("File is too large. Please select an image under 10MB."); return; }
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1200; const MAX_HEIGHT = 1200;
+                        let width = img.width; let height = img.height;
+
+                        if (width > height && width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } 
+                        else if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                        setNewPo(prev => ({ ...prev, attachmentData: dataUrl }));
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
             };
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'General', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '' }); 
+                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'General', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '', attachmentData: po.attachmentData || '' }); 
                 setIsPoModalOpen(true); 
             };
 
@@ -727,14 +805,16 @@
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '' }); setIsPoModalOpen(true); };
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault(); if (!user) return;
                 if (accessLevel === 4) return; if (editingPoId && accessLevel < 1) return; if (!editingPoId && accessLevel < 2) return; 
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
+                const action = editingPoId ? 'UPDATE' : 'CREATE';
                 try {
-                    await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null });
+                    await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null, attachmentData: newPo.attachmentData || null });
+                    await logAction(action, 'PO', newPo.id, `Vendor: ${newPo.vendor}, Amount: ${newPo.amount}, Status: ${poStatus}`);
                     setIsPoModalOpen(false); setEditingPoId(null);
                 } catch(err) { alert("Action Failed: " + err.message); }
             };
@@ -753,15 +833,35 @@
                         baseApv.checkNumber = existing.checkNumber || ''; baseApv.checkDate = existing.checkDate || ''; baseApv.releaseDate = existing.releaseDate || ''; baseApv.checkStatus = existing.checkStatus || 'Pending Check';
                     }
                 }
-                try { await getDbRef().collection('apvs').doc(newApv.id).set(baseApv); setIsApvModalOpen(false); setEditingApvId(null); } catch(err) { alert("Action Failed: " + err.message); }
+                const action = editingApvId ? 'UPDATE' : 'CREATE';
+                try { 
+                    await getDbRef().collection('apvs').doc(newApv.id).set(baseApv); 
+                    await logAction(action, 'APV', newApv.id, `Linked PO: ${newApv.poId}, Amount: ${newApv.amount}`);
+                    setIsApvModalOpen(false); setEditingApvId(null); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const handleDeletePo = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('purchases').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
-            const handleDeleteApv = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('apvs').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
+            const handleDeletePo = async (id) => { 
+                if (user && accessLevel === 3) try { 
+                    await getDbRef().collection('purchases').doc(id).delete(); 
+                    await logAction('DELETE', 'PO', id, `Deleted record permanently.`);
+                } catch(err){ alert("Delete Failed: " + err.message); } 
+            };
+            
+            const handleDeleteApv = async (id) => { 
+                if (user && accessLevel === 3) try { 
+                    await getDbRef().collection('apvs').doc(id).delete(); 
+                    await logAction('DELETE', 'APV', id, `Deleted record permanently.`);
+                } catch(err){ alert("Delete Failed: " + err.message); } 
+            };
 
             const handleReceivePo = async (e) => {
                 e.preventDefault(); if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
-                try { await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate(''); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); 
+                    await logAction('RECEIVE', 'PO', selectedPo.id, `Marked received on ${receiveDate}`);
+                    setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate(''); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleClearAllData = async () => {
@@ -773,8 +873,39 @@
                     for (const doc of pSnap.docs) await doc.ref.delete();
                     const aSnap = await dbRef.collection('apvs').get();
                     for (const doc of aSnap.docs) await doc.ref.delete();
+                    await logAction('CLEAR_ALL', 'SYSTEM', 'DATABASE', `Wiped all POs and APVs from the system.`);
                 } catch(err) { alert("Clear Data Failed: " + err.message); }
                 setIsClearing(false); setIsClearModalOpen(false);
+            };
+
+            // Enhanced Secure Authentication: Add User Access Level
+            const handleAddUser = async (e) => {
+                e.preventDefault();
+                if (!user || accessLevel !== 3) return;
+                try {
+                    const email = newUserAccount.email.toLowerCase().trim();
+                    if (!email) { alert('Invalid email format'); return; }
+                    
+                    await getDbRef().collection('appUsers').doc(email).set({ 
+                        email: email, 
+                        accessLevel: Number(newUserAccount.accessLevel) 
+                    });
+                    await logAction('UPDATE_ACCESS', 'USER', email, `Set access level to: ${newUserAccount.accessLevel}`);
+                    setIsUserModalOpen(false);
+                    setNewUserAccount({ email: '', accessLevel: 1 });
+                } catch(err) { alert("Failed to save user access: " + err.message); }
+            };
+
+            const handleDeleteUser = async (email) => {
+                if (user && accessLevel === 3) {
+                    if (confirm(`Remove custom access level for ${email}?`)) {
+                        try { 
+                            await getDbRef().collection('appUsers').doc(email).delete(); 
+                            await logAction('REMOVE_ACCESS', 'USER', email, `Revoked specific access level.`);
+                        } 
+                        catch(err) { alert("Delete Failed: " + err.message); }
+                    }
+                }
             };
 
             const handleImportSubmit = async (e) => {
@@ -797,7 +928,6 @@
                             item.category = item.category || 'General'; 
                             
                             if (importType === 'purchases') {
-                                // Standardize all dates for Purchase Orders
                                 item.prReceivedDate = standardizeDate(item.prReceivedDate);
                                 item.date = standardizeDate(item.date);
                                 item.expectedDelivery = standardizeDate(item.expectedDelivery);
@@ -809,7 +939,6 @@
                                 item.status = item.receivedDate ? 'Invoiced' : 'Pending';
                                 item.remarks = item.remarks || ''; item.prRequestor = item.prRequestor || ''; 
                             } else {
-                                // Standardize all dates for APVs
                                 item.invoiceDate = standardizeDate(item.invoiceDate);
                                 item.dueDate = standardizeDate(item.dueDate);
                                 item.settledDate = standardizeDate(item.settledDate);
@@ -825,6 +954,7 @@
                             await dbRef.doc(item.id).set(item, { merge: true });
                             successCount++;
                         }
+                        await logAction('IMPORT', 'BATCH', importType.toUpperCase(), `Imported ${successCount} records via CSV.`);
                         setImportingStatus(`Success! Uploaded ${successCount} records.`);
                         setTimeout(() => { setIsImportModalOpen(false); setImportFile(null); setImportingStatus(''); }, 2000);
                     } catch (error) { console.error(error); setImportingStatus('Error formatting CSV. Ensure columns match exactly.'); }
@@ -847,13 +977,77 @@
                 document.body.removeChild(textArea);
             };
 
-            const handleAdminLoginSubmit = (e) => {
+            // Enhanced Secure Authentication: Standard Login
+            const handleLoginSubmit = async (e) => {
                 e.preventDefault();
-                if (adminPassword === 'level1') { setAccessLevel(1); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
-                else if (adminPassword === 'level2') { setAccessLevel(2); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
-                else if (adminPassword === 'admin123') { setAccessLevel(3); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); } 
-                else if (adminPassword === 'treasury') { setAccessLevel(4); setShowAdminLogin(false); setAdminPassword(''); setAdminError(false); }
-                else { setAdminError(true); }
+                setIsDataLoading(true);
+                setLoginError(false);
+                setDbErrorMessage("");
+
+                try {
+                    await firebase.auth().signInWithEmailAndPassword(loginEmail, loginPassword);
+                } catch (error) {
+                    console.error("Authentication Error:", error);
+                    setLoginError(true);
+                    if(error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                        setDbErrorMessage("Incorrect email or password.");
+                    } else {
+                        setDbErrorMessage(error.message);
+                    }
+                    setIsDataLoading(false);
+                }
+            };
+
+            const handleSignOut = async () => {
+                try { await firebase.auth().signOut(); } catch(e) { console.error("Sign out error", e); }
+            };
+
+            const renderLoginPage = () => {
+                const [showPassword, setShowPassword] = useState(false);
+                return (
+                    <div className="min-h-screen flex flex-col justify-center p-4 animate-in fade-in" style={{ backgroundColor: '#11243E' }}>
+                        <div className="mb-8 w-full max-w-md mx-auto flex justify-center">
+                            <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-72 sm:w-80 object-contain pointer-events-none" style={{ mixBlendMode: 'screen' }} onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/11243E?text=ETMC+elev8'; }} />
+                        </div>
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto p-8">
+                            <div className="text-center mb-8">
+                                <h2 className="text-2xl font-bold text-gray-800">Welcome Back</h2>
+                                <p className="text-gray-500 text-sm mt-1">Please sign in to your dashboard</p>
+                            </div>
+                            
+                            <form className="space-y-6" onSubmit={handleLoginSubmit}>
+                                {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-200">{dbErrorMessage || 'Authentication Failed'}</div>}
+                                
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700 block">Email Address</label>
+                                    <div className="relative flex items-center">
+                                        <div className="absolute left-3 text-gray-400"><Mail size={18} /></div>
+                                        <input required type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all" placeholder="you@company.com" />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700 block">Password</label>
+                                    <div className="relative flex items-center">
+                                        <div className="absolute left-3 text-gray-400"><Lock size={18} /></div>
+                                        <input required type={showPassword ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all" placeholder="••••••••" />
+                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors">
+                                            {showPassword ? <X size={18} /> : <Eye size={18} />} {/* Fallback if eye icon isn't loaded */}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button type="submit" disabled={isDataLoading} className="w-full bg-[#11243E] hover:bg-[#1a355a] text-white font-semibold py-3.5 rounded-lg transition-colors duration-200 shadow-md mt-4 disabled:opacity-50">
+                                    {isDataLoading ? 'Authenticating...' : 'Sign In'}
+                                </button>
+                                
+                                <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-center text-[10px] text-gray-400">
+                                    <Shield size={12} className="mr-1" /> Protected by Firebase Authentication
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
             };
 
             const handleTabSwitch = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); };
@@ -872,10 +1066,14 @@
                 return (
                 <div className="flex h-screen items-center justify-center bg-gray-50 flex-col px-4 text-center">
                     <Loader2 size={48} className="animate-spin text-indigo-600 mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-800">Connecting to Remote Database...</h2>
-                    <p className="text-gray-500 text-sm mt-2 flex items-center justify-center"><Lock size={14} className="mr-1" /> Initializing Session</p>
+                    <h2 className="text-xl font-semibold text-gray-800">Checking Security Credentials...</h2>
+                    <p className="text-gray-500 text-sm mt-2 flex items-center justify-center"><Lock size={14} className="mr-1" /> Connecting to Authentication Server</p>
                 </div>
                 );
+            }
+
+            if (!isLoggedIn && !dbError) {
+                return renderLoginPage();
             }
 
             const renderDashboard = () => (
@@ -885,12 +1083,7 @@
                             <AlertTriangle className="mr-3 shrink-0 mt-0.5 text-red-600" size={24} />
                             <div>
                                 <h3 className="font-bold text-base md:text-lg mb-1">Database Connection Error</h3>
-                                <p className="text-xs md:text-sm mt-1 text-red-700">The dashboard could not authenticate or fetch data from Firebase. If you deployed this app to Netlify, you MUST:</p>
-                                <ol className="list-decimal list-inside text-xs md:text-sm mt-2 space-y-1 font-medium">
-                                    <li>Update the <code className="bg-red-100 px-1 rounded">customNetlifyConfig</code> block in the HTML source code.</li>
-                                    <li>Go to your Firebase Console → Authentication → Sign-in method → Enable <strong>Anonymous Auth</strong>.</li>
-                                    <li>Ensure your Firestore Rules are set to allow reads and writes.</li>
-                                </ol>
+                                <p className="text-xs md:text-sm mt-1 text-red-700">The dashboard could not authenticate or fetch data from Firebase. Ensure your configuration is correct.</p>
                                 {dbErrorMessage && <p className="mt-3 text-[10px] md:text-xs font-mono bg-red-100 p-2 rounded break-words">Log: {dbErrorMessage}</p>}
                             </div>
                         </div>
@@ -983,6 +1176,12 @@
                                     </div>
                                     <div className="text-[10px] text-gray-500 mb-1.5 line-clamp-2" title={po.description}>{po.description}</div>
                                     
+                                    {po.attachmentData && (
+                                        <button onClick={() => setViewingImage(po.attachmentData)} className="mb-2 text-[9px] flex items-center text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors px-2 py-1 rounded font-bold border border-blue-200 w-max">
+                                            <Paperclip size={10} className="mr-1"/> View PR/PO File
+                                        </button>
+                                    )}
+
                                     <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm mb-1.5">
                                         <div className="text-[9px] text-gray-600 grid grid-cols-2 gap-x-2 gap-y-1">
                                             <div><span className="font-bold text-gray-400 uppercase tracking-wider">PR Date:</span> {po.prReceivedDate || 'N/A'}</div>
@@ -1024,7 +1223,6 @@
                                         <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
                                         {accessLevel >= 2 && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">{isServiceOrRental ? 'Complete' : 'Receive'}</button>}
                                         
-                                        {/* Warning Email Triggers */}
                                         {accessLevel >= 2 && isDelayed && (
                                             <button onClick={() => draftDeliveryFollowUpEmail(po)} className="text-rose-400 hover:text-rose-600 transition-colors" title="Draft Delivery Follow-up"><Bell size={16} /></button>
                                         )}
@@ -1094,7 +1292,6 @@
                                         <td className="p-4 text-center space-x-2 whitespace-nowrap">
                                             <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
                                             
-                                            {/* AI Check Warning Trigger */}
                                             {needsCheck && (
                                                 <button onClick={() => draftNoCheckEmail(apv)} className="text-amber-500 hover:text-amber-600 transition-colors" title="Follow up Check Preparation">
                                                     <Bell size={16} />
@@ -1141,7 +1338,6 @@
                             )}
                         </div>
                         
-                        {/* Treasury Summary */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 md:p-6 border-b border-gray-100 bg-slate-50">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                                 <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Earmarked (Funded)</p>
@@ -1160,7 +1356,6 @@
                             </div>
                         </div>
 
-                        {/* Treasury Table */}
                         <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
                             <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV Ref</th><th className="p-4">Vendor</th><th className="p-4 text-right">Amount</th><th className="p-4">Check Details</th><th className="p-4 text-center">Status</th>{(accessLevel === 3 || accessLevel === 4) && <th className="p-4 text-center">Action</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-100">{sortedTreasury.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-400 italic">No records match your search.</td></tr> : sortedTreasury.map(apv => {
@@ -1354,6 +1549,122 @@
                 );
             };
 
+            const renderUserManagement = () => (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+                    <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
+                        <h3 className="text-base md:text-lg font-semibold text-gray-900">User Access Control</h3>
+                        <button onClick={() => setIsUserModalOpen(true)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center hover:bg-indigo-700 transition-colors">
+                            <Plus size={16} className="mr-1" /> Add / Edit User Access
+                        </button>
+                    </div>
+                    <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-start text-xs text-indigo-800">
+                        <Shield size={20} className="mr-3 shrink-0 mt-0.5 text-indigo-600" />
+                        <div>
+                            <strong>Secure Firebase Auth is Active:</strong> Users and their passwords must be created in the <strong>Firebase Console &gt; Authentication</strong> dashboard first. Use this screen to assign specific access levels to those authenticated emails.
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs md:text-sm">
+                            <thead>
+                                <tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase">
+                                    <th className="p-4">Email Address</th>
+                                    <th className="p-4">Access Level</th>
+                                    <th className="p-4 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {appUsers.length === 0 ? (
+                                    <tr><td colSpan="3" className="p-8 text-center text-gray-400 italic">No custom access levels assigned yet.</td></tr>
+                                ) : appUsers.map(u => (
+                                    <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="p-4 font-bold text-gray-900">{u.email}</td>
+                                        <td className="p-4">
+                                            <span className="px-2 py-1 rounded-full text-[10px] font-bold border bg-gray-50 text-gray-600 border-gray-200 uppercase">
+                                                {u.accessLevel === 3 ? 'Admin (Full)' : u.accessLevel === 4 ? 'Treasury' : u.accessLevel === 2 ? 'Level 2' : u.accessLevel === 1 ? 'Level 1' : 'View Only'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <button onClick={() => handleDeleteUser(u.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Revoke Specific Access"><Trash2 size={16} /></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+
+            // Audit Logs UI
+            const renderLogs = () => {
+                const getActionColor = (action) => {
+                    switch (action) {
+                        case 'CREATE': case 'UPDATE_ACCESS': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        case 'UPDATE': case 'UPDATE_CHECK': return 'bg-blue-50 text-blue-700 border-blue-200';
+                        case 'DELETE': case 'REMOVE_ACCESS': case 'CLEAR_ALL': return 'bg-red-50 text-red-700 border-red-200';
+                        case 'FUND': case 'RECEIVE': case 'IMPORT': return 'bg-purple-50 text-purple-700 border-purple-200';
+                        case 'UNFUND': case 'RESET_FUNDING': return 'bg-orange-50 text-orange-700 border-orange-200';
+                        default: return 'bg-gray-50 text-gray-700 border-gray-200';
+                    }
+                };
+
+                return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+                        <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-gray-50">
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900 flex items-center"><History className="mr-2 text-indigo-600" size={20} /> System Audit Logs</h3>
+                            <p className="text-xs text-gray-500 mt-1">A chronological history of all data modifications made in the dashboard.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs md:text-sm">
+                                <thead>
+                                    <tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase">
+                                        <th className="p-4">Timestamp</th>
+                                        <th className="p-4">User</th>
+                                        <th className="p-4">Action</th>
+                                        <th className="p-4">Target Ref</th>
+                                        <th className="p-4">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredAuditLogs.length === 0 ? (
+                                        <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No logs found matching your search.</td></tr>
+                                    ) : filteredAuditLogs.map(log => {
+                                        const dateObj = new Date(log.timestamp);
+                                        return (
+                                            <tr key={log.id} className="hover:bg-gray-50 transition-colors align-top">
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <div className="font-bold text-gray-800">{dateObj.toLocaleDateString()}</div>
+                                                    <div className="text-[10px] text-gray-500">{dateObj.toLocaleTimeString()}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center text-gray-700 font-medium">
+                                                        <User size={14} className="mr-1.5 text-indigo-400" />
+                                                        <span className="truncate max-w-[150px]" title={log.user}>{log.user}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getActionColor(log.action)}`}>
+                                                        {log.action}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="font-bold text-slate-800 truncate max-w-[150px]" title={log.entityId}>{log.entityId}</div>
+                                                    <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{log.entityType}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-[11px] text-gray-600 font-mono bg-slate-50 border border-slate-100 p-2 rounded break-words">
+                                                        {log.details}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
             return (
                 <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden relative">
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
@@ -1363,15 +1674,22 @@
                                 <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="max-h-20 w-auto object-contain pointer-events-none" style={{ mixBlendMode: 'screen' }} onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/11243E?text=ETMC'; }} />
                             </div>
                         </div>
-                        <nav className="flex-1 px-4 space-y-2 mt-4">
+                        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
                             <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
                             <button onClick={() => handleTabSwitch('purchases')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'purchases' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><ShoppingCart className="mr-3" size={20} /> Purchase Orders</button>
                             <button onClick={() => handleTabSwitch('apvs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'apvs' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><FileText className="mr-3" size={20} /> APV Records</button>
                             <button onClick={() => handleTabSwitch('treasury')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'treasury' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><Wallet className="mr-3" size={20} /> Treasury Records</button>
                             <button onClick={() => handleTabSwitch('funding')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'funding' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><CalendarDays className="mr-3" size={20} /> Cash Position Report</button>
                             <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
+                            
+                            {accessLevel === 3 && (
+                                <div className="pt-4 mt-4 border-t border-white/10 space-y-2">
+                                    <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-white/10'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>
+                                    <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-white/10'}`}><History className="mr-3" size={20} /> System Logs</button>
+                                </div>
+                            )}
                         </nav>
-                        <div className="p-6 bg-black/20 mt-auto">
+                        <div className="p-6 bg-black/20 mt-auto shrink-0">
                             {accessLevel === 3 && (
                                 <>
                                     <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 rounded-lg text-sm transition-colors"><Download size={16} className="mr-2" /> Import Data (CSV)</button>
@@ -1379,13 +1697,13 @@
                                 </>
                             )}
                             
-                            {accessLevel > 0 ? (
-                                <button onClick={() => setAccessLevel(0)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-white/5 hover:bg-white/10 rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Lock Dashboard</button>
-                            ) : (
-                                <button onClick={() => setShowAdminLogin(true)} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-indigo-600 rounded-lg text-sm text-white font-bold tracking-tight">Admin Login</button>
-                            )}
-                            <div className="text-xs text-slate-400 uppercase font-semibold mb-1">System Date</div>
-                            <div className="text-sm font-medium text-slate-200 flex items-center truncate"><Calendar size={14} className="mr-2"/> {TODAY.toLocaleDateString()}</div>
+                            <button onClick={handleSignOut} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Sign Out</button>
+
+                            <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Logged in as</div>
+                            <div className="text-xs font-medium text-slate-200 flex items-center truncate mb-3" title={currentUserName}><User size={12} className="mr-2 shrink-0"/> <span className="truncate">{currentUserName}</span></div>
+
+                            <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">System Date</div>
+                            <div className="text-xs font-medium text-slate-200 flex items-center truncate"><Calendar size={12} className="mr-2 shrink-0"/> {TODAY.toLocaleDateString()}</div>
                         </div>
                     </aside>
 
@@ -1433,17 +1751,39 @@
                             {activeTab === 'treasury' && renderTreasury()}
                             {activeTab === 'funding' && renderFundingReport()}
                             {activeTab === 'aging' && renderAgingReport()}
+                            {activeTab === 'users' && accessLevel === 3 && renderUserManagement()}
+                            {activeTab === 'logs' && accessLevel === 3 && renderLogs()}
                         </div>
                     </main>
 
                     {/* Modals */}
-                    {showAdminLogin && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-                                <h3 className="font-bold text-gray-900 text-lg flex items-center"><Unlock size={18} className="mr-2 text-indigo-600"/> Authorization Login</h3>
-                                <p className="text-xs text-gray-500">Enter your assigned passcode to elevate your access permissions.</p>
-                                <input type="password" autoFocus placeholder="Passcode" value={adminPassword} onChange={e => {setAdminPassword(e.target.value); setAdminError(false);}} className={`w-full px-3 py-3 border rounded-lg focus:outline-none ${adminError ? 'border-red-500' : 'border-gray-300'}`} />
-                                <div className="flex justify-end space-x-3"><button onClick={() => setShowAdminLogin(false)} className="px-4 py-2 text-sm font-medium text-gray-500">Cancel</button><button onClick={handleAdminLoginSubmit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold">Login</button></div>
+                    {isUserModalOpen && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base flex items-center"><User className="mr-2 text-indigo-600" size={18} /> Update User Access</h3>
+                                    <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                                </div>
+                                <form onSubmit={handleAddUser} className="p-4 md:p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Email Address (Registered in Firebase)</label>
+                                        <input required type="email" value={newUserAccount.email} onChange={e => setNewUserAccount({...newUserAccount, email: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="user@company.com" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Access Level Privilege</label>
+                                        <select required value={newUserAccount.accessLevel} onChange={e => setNewUserAccount({...newUserAccount, accessLevel: Number(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                                            <option value={3}>Admin (Full Access & User Control)</option>
+                                            <option value={4}>Treasury (Treasury & Funding Only)</option>
+                                            <option value={2}>Level 2 (Edit PO/APV Records)</option>
+                                            <option value={1}>Level 1 (View & Limited Edits)</option>
+                                            <option value={0}>Guest (View Only)</option>
+                                        </select>
+                                    </div>
+                                    <div className="pt-2 flex justify-end space-x-3">
+                                        <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                                        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Access Level</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     )}
@@ -1621,6 +1961,20 @@
                                     </div>
                                     <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-indigo-500'}`} placeholder="Brief description of items" /></div>
                                     <div><label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea></div>
+                                    
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                        <label className="text-[10px] uppercase font-bold text-slate-700 block mb-2 flex items-center"><Paperclip size={12} className="mr-1"/> Attach PR/PO Document <span className="text-slate-400 font-normal lowercase ml-1">(JPEG/PNG only)</span></label>
+                                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                                            <input disabled={accessLevel === 1} type="file" accept="image/jpeg, image/png, image/jpg" onChange={handleFileUpload} className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 disabled:opacity-50 w-full" />
+                                            {newPo.attachmentData && (
+                                                <div className="shrink-0 flex items-center bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-emerald-200">
+                                                    <ImageIcon size={12} className="mr-1" /> Image Attached
+                                                    <button type="button" onClick={() => setNewPo({...newPo, attachmentData: ''})} className="ml-2 text-emerald-900 hover:text-red-600 bg-emerald-100/50 p-0.5 rounded-full" title="Remove Attachment"><X size={12} /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Save PO</button></div>
                                 </form>
                             </div>
@@ -1650,6 +2004,18 @@
                                     </div>
                                     <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsReceiveModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {viewingImage && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingImage(null)}>
+                            <div className="relative max-w-5xl w-full flex flex-col items-center justify-center h-full" onClick={e => e.stopPropagation()}>
+                                <div className="absolute top-4 right-4 flex space-x-2">
+                                    <a href={viewingImage} download={`PO_Attachment_${TODAY.getTime()}.jpg`} className="bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-colors" title="Download Image"><Download size={24} /></a>
+                                    <button onClick={() => setViewingImage(null)} className="bg-white/20 hover:bg-red-500/80 text-white p-2 rounded-full transition-colors" title="Close"><X size={24} /></button>
+                                </div>
+                                <img src={viewingImage} alt="PO Attachment" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
                             </div>
                         </div>
                     )}
