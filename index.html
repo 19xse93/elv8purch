@@ -85,7 +85,7 @@
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
         const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer'); const UsersIcon = safeIcon('Users');
-        const History = safeIcon('History');
+        const History = safeIcon('History'); const Shield = safeIcon('Shield');
 
         // =========================================================================
         // FIREBASE CONFIGURATION
@@ -343,7 +343,7 @@
             
             // Login State
             const [isLoggedIn, setIsLoggedIn] = useState(false);
-            const [loginUsername, setLoginUsername] = useState('');
+            const [loginEmail, setLoginEmail] = useState('');
             const [loginPassword, setLoginPassword] = useState('');
             const [loginError, setLoginError] = useState(false);
 
@@ -356,7 +356,7 @@
 
             // Modals
             const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-            const [newUserAccount, setNewUserAccount] = useState({ username: '', password: '', accessLevel: 1 });
+            const [newUserAccount, setNewUserAccount] = useState({ email: '', accessLevel: 1 });
             const [isPoModalOpen, setIsPoModalOpen] = useState(false);
             const [isApvModalOpen, setIsApvModalOpen] = useState(false);
             const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -411,51 +411,63 @@
                 } catch (e) { console.warn("Failed to log action:", e); }
             };
 
+            // Enhanced Secure Authentication Initialization
             useEffect(() => {
                 let unsubscribe = () => {};
-                const initAuth = async () => {
-                    try {
-                        const auth = firebase.auth();
-                        let currentUser = auth.currentUser;
-                        if (!currentUser) {
-                            if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                                const cred = await auth.signInWithCustomToken(window.__initial_auth_token);
-                                currentUser = cred.user;
-                            } else {
-                                const cred = await auth.signInAnonymously();
-                                currentUser = cred.user;
-                            }
-                        }
-                    } catch (error) { 
-                        console.error("Firebase Auth failed:", error); 
-                        setDbError(true);
-                        setDbErrorMessage(`Authentication failed. Make sure Anonymous Auth is enabled in Firebase. (${error.message})`);
-                        setIsDataLoading(false);
-                    }
-                };
-                
                 try {
-                    initAuth().then(() => {
-                        unsubscribe = firebase.auth().onAuthStateChanged((u) => {
+                    const auth = firebase.auth();
+                    
+                    unsubscribe = auth.onAuthStateChanged(async (u) => {
+                        if (u) {
                             setUser(u);
-                            if (!u && !dbError) {
-                                setDbError(true);
-                                setDbErrorMessage("Auth listener returned null. Session disconnected.");
-                                setIsDataLoading(false);
+                            setIsLoggedIn(true);
+                            
+                            // Fetch access level for logged-in user email
+                            let email = u.email;
+                            if (email) {
+                                try {
+                                    const userDoc = await getDbRef().collection('appUsers').doc(email).get();
+                                    if (userDoc.exists) {
+                                        setAccessLevel(userDoc.data().accessLevel);
+                                    } else {
+                                        setAccessLevel(1); // Default to Level 1 if authenticated but not explicitly assigned a level
+                                    }
+                                    setCurrentUserName(email);
+                                } catch (e) {
+                                    console.error("Access Level Fetch Failed", e);
+                                    setAccessLevel(1);
+                                    setCurrentUserName(email);
+                                }
+                            } else {
+                                // Fallback for Canvas Preview custom token auth which lacks email
+                                setAccessLevel(3);
+                                setCurrentUserName('Admin (Canvas Preview)');
                             }
-                        });
-                    }).catch(e => {
-                        setDbError(true); setDbErrorMessage(e.message); setIsDataLoading(false);
+                        } else {
+                            setUser(null);
+                            setIsLoggedIn(false);
+                            setAccessLevel(0);
+                        }
+                        setIsDataLoading(false);
                     });
-                } catch(e) {
-                    setDbError(true); setDbErrorMessage("Firebase SDK not loaded."); setIsDataLoading(false);
+
+                    // Support for Canvas Preview Environment Injection
+                    if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token && !auth.currentUser) {
+                        auth.signInWithCustomToken(window.__initial_auth_token).catch(e => console.warn("Canvas auth failed", e));
+                    }
+                    
+                } catch (error) {
+                    console.error("Firebase SDK Initialization Error:", error);
+                    setDbError(true);
+                    setDbErrorMessage(error.message);
+                    setIsDataLoading(false);
                 }
-                
+
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
-                if (!user) return;
+                if (!user || !isLoggedIn) return;
                 let unsubPurchases = () => {};
                 let unsubApvs = () => {};
                 let unsubUsers = () => {};
@@ -473,7 +485,6 @@
                             console.warn("Firestore listener error (purchases):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
-                            setIsDataLoading(false);
                         }
                     );
 
@@ -481,13 +492,11 @@
                         (snapshot) => {
                             const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             setApvs(loadedData.sort((a, b) => a.id.localeCompare(b.id)));
-                            setIsDataLoading(false);
                         },
                         (error) => {
                             console.warn("Firestore listener error (apvs):", error);
                             setDbError(true);
                             setDbErrorMessage(`Firestore Read Blocked: Check your Firebase Rules. (${error.message})`);
-                            setIsDataLoading(false);
                         }
                     );
 
@@ -512,11 +521,10 @@
                     console.error("Critical Firebase Error in useEffect:", error);
                     setDbError(true);
                     setDbErrorMessage(error.message);
-                    setIsDataLoading(false);
                 }
 
                 return () => { unsubPurchases(); unsubApvs(); unsubUsers(); unsubLogs(); };
-            }, [user]);
+            }, [user, isLoggedIn]);
 
             const getItemCategory = (item) => item.category || 'Freshman';
 
@@ -849,30 +857,30 @@
                 setIsClearing(false); setIsClearModalOpen(false);
             };
 
+            // Enhanced Secure Authentication: Add User Access Level
             const handleAddUser = async (e) => {
                 e.preventDefault();
                 if (!user || accessLevel !== 3) return;
                 try {
-                    const userId = newUserAccount.username.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    if (!userId) { alert('Invalid username format'); return; }
+                    const email = newUserAccount.email.toLowerCase().trim();
+                    if (!email) { alert('Invalid email format'); return; }
                     
-                    await getDbRef().collection('appUsers').doc(userId).set({ 
-                        username: newUserAccount.username.toLowerCase(), 
-                        password: newUserAccount.password, 
+                    await getDbRef().collection('appUsers').doc(email).set({ 
+                        email: email, 
                         accessLevel: Number(newUserAccount.accessLevel) 
                     });
-                    await logAction('CREATE_USER', 'USER', userId, `Granted access level: ${newUserAccount.accessLevel}`);
+                    await logAction('UPDATE_ACCESS', 'USER', email, `Set access level to: ${newUserAccount.accessLevel}`);
                     setIsUserModalOpen(false);
-                    setNewUserAccount({ username: '', password: '', accessLevel: 1 });
-                } catch(err) { alert("Failed to add user: " + err.message); }
+                    setNewUserAccount({ email: '', accessLevel: 1 });
+                } catch(err) { alert("Failed to save user access: " + err.message); }
             };
 
-            const handleDeleteUser = async (id) => {
+            const handleDeleteUser = async (email) => {
                 if (user && accessLevel === 3) {
-                    if (confirm("Delete this user account?")) {
+                    if (confirm(`Remove custom access level for ${email}?`)) {
                         try { 
-                            await getDbRef().collection('appUsers').doc(id).delete(); 
-                            await logAction('DELETE_USER', 'USER', id, `Revoked access from dashboard.`);
+                            await getDbRef().collection('appUsers').doc(email).delete(); 
+                            await logAction('REMOVE_ACCESS', 'USER', email, `Revoked specific access level.`);
                         } 
                         catch(err) { alert("Delete Failed: " + err.message); }
                     }
@@ -944,41 +952,53 @@
                 document.body.removeChild(textArea);
             };
 
-            const handleLoginSubmit = (e) => {
+            // Enhanced Secure Authentication: Standard Login
+            const handleLoginSubmit = async (e) => {
                 e.preventDefault();
-                const u = loginUsername.toLowerCase();
-                const p = loginPassword;
-                
-                // Master Failsafe Admin Login
-                if (u === 'admin' && p === 'admin123') { 
-                    setAccessLevel(3); setIsLoggedIn(true); setLoginError(false); setCurrentUserName('admin (Master)');
-                    return; 
+                setIsDataLoading(true);
+                setLoginError(false);
+                setDbErrorMessage("");
+
+                try {
+                    await firebase.auth().signInWithEmailAndPassword(loginEmail, loginPassword);
+                    // The onAuthStateChanged listener handles the rest
+                } catch (error) {
+                    console.error("Authentication Error:", error);
+                    setLoginError(true);
+                    
+                    // Format Firebase Error gently
+                    if(error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                        setDbErrorMessage("Incorrect email or password.");
+                    } else {
+                        setDbErrorMessage(error.message);
+                    }
+                    setIsDataLoading(false);
                 }
-                
-                // Dynamic Check against Custom Users Database
-                const matchedUser = appUsers.find(user => user.username.toLowerCase() === u && user.password === p);
-                
-                if (matchedUser) { 
-                    setAccessLevel(matchedUser.accessLevel); setIsLoggedIn(true); setLoginError(false); setCurrentUserName(matchedUser.username);
-                } else { 
-                    setLoginError(true); 
-                }
+            };
+
+            const handleSignOut = async () => {
+                try {
+                    await firebase.auth().signOut();
+                    // State cleared by onAuthStateChanged listener
+                } catch(e) { console.error("Sign out error", e); }
             };
 
             const renderLoginPage = () => (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 animate-in fade-in">
                     <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
-                           <img src="./ETMC_LOGO.png" alt="elev8 trading and marketing" className="w-full max-h-32 object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/10213b?text=ETMC+elev8'; }} />
-                                        </div>
+                        <div className="w-72 md:w-96 mb-8 flex items-center justify-center">
+                            <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-full max-h-48 object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/10213b?text=ETMC+elev8'; }} />
+                        </div>
+                    </div>
                     <div className="sm:mx-auto sm:w-full sm:max-w-md">
                         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
                             <form className="space-y-6" onSubmit={handleLoginSubmit}>
-                                {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-200">Invalid username or password.</div>}
+                                {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-200">{dbErrorMessage || 'Authentication Failed'}</div>}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Username</label>
+                                    <label className="block text-sm font-medium text-gray-700">Email Address</label>
                                     <div className="mt-1 relative rounded-md shadow-sm">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User size={16} className="text-gray-400" /></div>
-                                        <input required type="text" value={loginUsername} onChange={e => setLoginUsername(e.target.value)} className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border outline-none" placeholder="Username" />
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail size={16} className="text-gray-400" /></div>
+                                        <input required type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border outline-none" placeholder="you@company.com" />
                                     </div>
                                 </div>
                                 <div>
@@ -990,8 +1010,11 @@
                                 </div>
                                 <div>
                                     <button type="submit" disabled={isDataLoading} className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50">
-                                        {isDataLoading ? 'Connecting to Network...' : 'Sign In to Dashboard'}
+                                        {isDataLoading ? 'Authenticating...' : 'Sign In to Dashboard'}
                                     </button>
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-center text-[10px] text-gray-400">
+                                    <Shield size={12} className="mr-1" /> Protected by Firebase Authentication
                                 </div>
                             </form>
                         </div>
@@ -1015,8 +1038,8 @@
                 return (
                 <div className="flex h-screen items-center justify-center bg-gray-50 flex-col px-4 text-center">
                     <Loader2 size={48} className="animate-spin text-indigo-600 mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-800">Connecting to Remote Database...</h2>
-                    <p className="text-gray-500 text-sm mt-2 flex items-center justify-center"><Lock size={14} className="mr-1" /> Initializing Session</p>
+                    <h2 className="text-xl font-semibold text-gray-800">Checking Security Credentials...</h2>
+                    <p className="text-gray-500 text-sm mt-2 flex items-center justify-center"><Lock size={14} className="mr-1" /> Connecting to Authentication Server</p>
                 </div>
                 );
             }
@@ -1490,44 +1513,44 @@
             const renderUserManagement = () => (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
-                        <h3 className="text-base md:text-lg font-semibold text-gray-900">User Management</h3>
+                        <h3 className="text-base md:text-lg font-semibold text-gray-900">User Access Control</h3>
                         <button onClick={() => setIsUserModalOpen(true)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center hover:bg-indigo-700 transition-colors">
-                            <Plus size={16} className="mr-1" /> Add Custom User
+                            <Plus size={16} className="mr-1" /> Add / Edit User Access
                         </button>
+                    </div>
+                    <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-start text-xs text-indigo-800">
+                        <Shield size={20} className="mr-3 shrink-0 mt-0.5 text-indigo-600" />
+                        <div>
+                            <strong>Secure Firebase Auth is Active:</strong> Users and their passwords must be created in the <strong>Firebase Console &gt; Authentication</strong> dashboard first. Use this screen to assign specific access levels to those authenticated emails.
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs md:text-sm">
                             <thead>
                                 <tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase">
-                                    <th className="p-4">Username</th>
-                                    <th className="p-4">Password</th>
+                                    <th className="p-4">Email Address</th>
                                     <th className="p-4">Access Level</th>
                                     <th className="p-4 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {appUsers.length === 0 ? (
-                                    <tr><td colSpan="4" className="p-8 text-center text-gray-400 italic">No custom user accounts created yet.</td></tr>
+                                    <tr><td colSpan="3" className="p-8 text-center text-gray-400 italic">No custom access levels assigned yet.</td></tr>
                                 ) : appUsers.map(u => (
                                     <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-4 font-bold text-gray-900">{u.username}</td>
-                                        <td className="p-4 font-mono text-gray-500">{u.password}</td>
+                                        <td className="p-4 font-bold text-gray-900">{u.email}</td>
                                         <td className="p-4">
                                             <span className="px-2 py-1 rounded-full text-[10px] font-bold border bg-gray-50 text-gray-600 border-gray-200 uppercase">
                                                 {u.accessLevel === 3 ? 'Admin (Full)' : u.accessLevel === 4 ? 'Treasury' : u.accessLevel === 2 ? 'Level 2' : u.accessLevel === 1 ? 'Level 1' : 'View Only'}
                                             </span>
                                         </td>
                                         <td className="p-4 text-center">
-                                            <button onClick={() => handleDeleteUser(u.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete User"><Trash2 size={16} /></button>
+                                            <button onClick={() => handleDeleteUser(u.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Revoke Specific Access"><Trash2 size={16} /></button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                    <div className="p-4 bg-yellow-50 text-yellow-800 text-xs flex items-start border-t border-yellow-100">
-                        <AlertCircle size={16} className="mr-2 mt-0.5 shrink-0"/>
-                        <p><strong>Note:</strong> The master <code>admin</code> / <code>admin123</code> account is a hardcoded system failsafe and cannot be viewed or deleted here. It guarantees you will never be locked out.</p>
                     </div>
                 </div>
             );
@@ -1536,9 +1559,9 @@
             const renderLogs = () => {
                 const getActionColor = (action) => {
                     switch (action) {
-                        case 'CREATE': case 'CREATE_USER': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        case 'CREATE': case 'UPDATE_ACCESS': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
                         case 'UPDATE': case 'UPDATE_CHECK': return 'bg-blue-50 text-blue-700 border-blue-200';
-                        case 'DELETE': case 'DELETE_USER': case 'CLEAR_ALL': return 'bg-red-50 text-red-700 border-red-200';
+                        case 'DELETE': case 'REMOVE_ACCESS': case 'CLEAR_ALL': return 'bg-red-50 text-red-700 border-red-200';
                         case 'FUND': case 'RECEIVE': case 'IMPORT': return 'bg-purple-50 text-purple-700 border-purple-200';
                         case 'UNFUND': case 'RESET_FUNDING': return 'bg-orange-50 text-orange-700 border-orange-200';
                         default: return 'bg-gray-50 text-gray-700 border-gray-200';
@@ -1576,7 +1599,7 @@
                                                 <td className="p-4">
                                                     <div className="flex items-center text-gray-700 font-medium">
                                                         <User size={14} className="mr-1.5 text-indigo-400" />
-                                                        {log.user}
+                                                        <span className="truncate max-w-[150px]" title={log.user}>{log.user}</span>
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
@@ -1585,7 +1608,7 @@
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
-                                                    <div className="font-bold text-slate-800">{log.entityId}</div>
+                                                    <div className="font-bold text-slate-800 truncate max-w-[150px]" title={log.entityId}>{log.entityId}</div>
                                                     <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{log.entityType}</div>
                                                 </td>
                                                 <td className="p-4">
@@ -1608,8 +1631,9 @@
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
                     <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transform transition-transform md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-4 flex items-center justify-center border-b border-slate-800/50 bg-slate-950/30">
-                             <img src="./ETMC_LOGO.png" alt="ETMC elev8" className="max-h-12 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
-                         
+                            <div className="flex items-center justify-center w-full">
+                                <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="max-h-20 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
+                            </div>
                         </div>
                         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
                             <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
@@ -1634,10 +1658,13 @@
                                 </>
                             )}
                             
-                            <button onClick={() => { setIsLoggedIn(false); setAccessLevel(0); setLoginUsername(''); setLoginPassword(''); }} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Sign Out</button>
+                            <button onClick={handleSignOut} className="w-full flex items-center justify-center px-4 py-2 mb-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"><Lock size={16} className="mr-2" /> Sign Out</button>
 
-                            <div className="text-xs text-slate-500 uppercase font-semibold mb-1">System Date</div>
-                            <div className="text-sm font-medium text-slate-300 flex items-center truncate"><Calendar size={14} className="mr-2"/> {TODAY.toLocaleDateString()}</div>
+                            <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1">Logged in as</div>
+                            <div className="text-xs font-medium text-slate-300 flex items-center truncate mb-3" title={currentUserName}><User size={12} className="mr-2 shrink-0"/> <span className="truncate">{currentUserName}</span></div>
+
+                            <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1">System Date</div>
+                            <div className="text-xs font-medium text-slate-300 flex items-center truncate"><Calendar size={12} className="mr-2 shrink-0"/> {TODAY.toLocaleDateString()}</div>
                         </div>
                     </aside>
 
@@ -1688,22 +1715,18 @@
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
                                 <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base flex items-center"><User className="mr-2 text-indigo-600" size={18} /> Add New User</h3>
+                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base flex items-center"><User className="mr-2 text-indigo-600" size={18} /> Update User Access</h3>
                                     <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                                 </div>
                                 <form onSubmit={handleAddUser} className="p-4 md:p-6 space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Username (No spaces)</label>
-                                        <input required type="text" value={newUserAccount.username} onChange={e => setNewUserAccount({...newUserAccount, username: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. jdelacruz" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                                        <input required type="text" value={newUserAccount.password} onChange={e => setNewUserAccount({...newUserAccount, password: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Set a unique password" />
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Email Address (Registered in Firebase)</label>
+                                        <input required type="email" value={newUserAccount.email} onChange={e => setNewUserAccount({...newUserAccount, email: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="user@company.com" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">Access Level Privilege</label>
                                         <select required value={newUserAccount.accessLevel} onChange={e => setNewUserAccount({...newUserAccount, accessLevel: Number(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                                            <option value={3}>Admin (Full Access & Database Config)</option>
+                                            <option value={3}>Admin (Full Access & User Control)</option>
                                             <option value={4}>Treasury (Treasury & Funding Only)</option>
                                             <option value={2}>Level 2 (Edit PO/APV Records)</option>
                                             <option value={1}>Level 1 (View & Limited Edits)</option>
@@ -1712,7 +1735,7 @@
                                     </div>
                                     <div className="pt-2 flex justify-end space-x-3">
                                         <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save User</button>
+                                        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Access Level</button>
                                     </div>
                                 </form>
                             </div>
