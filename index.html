@@ -85,6 +85,7 @@
         const Wallet = safeIcon('Wallet'); const Send = safeIcon('Send'); const Edit3 = safeIcon('Edit3'); const Menu = safeIcon('Menu'); const Filter = safeIcon('Filter');
         const Upload = safeIcon('Upload'); const Download = safeIcon('Download'); const Search = safeIcon('Search'); const Bell = safeIcon('Bell'); const Tag = safeIcon('Tag');
         const Landmark = safeIcon('Landmark'); const FileSignature = safeIcon('FileSignature'); const PiggyBank = safeIcon('PiggyBank'); const Timer = safeIcon('Timer'); const UsersIcon = safeIcon('Users');
+        const History = safeIcon('History');
 
         // =========================================================================
         // FIREBASE CONFIGURATION
@@ -328,6 +329,7 @@
             const [purchases, setPurchases] = useState([]);
             const [apvs, setApvs] = useState([]);
             const [appUsers, setAppUsers] = useState([]);
+            const [auditLogs, setAuditLogs] = useState([]);
             const [isDataLoading, setIsDataLoading] = useState(true);
             const [dbError, setDbError] = useState(false);
             const [dbErrorMessage, setDbErrorMessage] = useState("");
@@ -337,6 +339,7 @@
             const [selectedMonth, setSelectedMonth] = useState('All');
 
             const [accessLevel, setAccessLevel] = useState(0); 
+            const [currentUserName, setCurrentUserName] = useState('');
             
             // Login State
             const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -391,6 +394,23 @@
                 catch(e) { throw new Error("Firestore mapping failed."); }
             };
 
+            // Global Audit Logger Function
+            const logAction = async (action, entityType, entityId, details) => {
+                if (!user) return;
+                try {
+                    const logEntry = {
+                        id: crypto.randomUUID(),
+                        timestamp: new Date().toISOString(),
+                        user: currentUserName || 'System',
+                        action: action, 
+                        entityType: entityType, 
+                        entityId: entityId,
+                        details: details
+                    };
+                    await getDbRef().collection('audit_logs').doc(logEntry.id).set(logEntry);
+                } catch (e) { console.warn("Failed to log action:", e); }
+            };
+
             useEffect(() => {
                 let unsubscribe = () => {};
                 const initAuth = async () => {
@@ -439,6 +459,7 @@
                 let unsubPurchases = () => {};
                 let unsubApvs = () => {};
                 let unsubUsers = () => {};
+                let unsubLogs = () => {};
                 
                 try {
                     const dbRef = getDbRef();
@@ -478,6 +499,15 @@
                         (error) => { console.warn("Firestore listener error (users):", error); }
                     );
 
+                    unsubLogs = dbRef.collection('audit_logs').onSnapshot(
+                        (snapshot) => {
+                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            // Sort descending in memory
+                            setAuditLogs(loadedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+                        },
+                        (error) => { console.warn("Firestore listener error (logs):", error); }
+                    );
+
                 } catch (error) {
                     console.error("Critical Firebase Error in useEffect:", error);
                     setDbError(true);
@@ -485,7 +515,7 @@
                     setIsDataLoading(false);
                 }
 
-                return () => { unsubPurchases(); unsubApvs(); unsubUsers(); };
+                return () => { unsubPurchases(); unsubApvs(); unsubUsers(); unsubLogs(); };
             }, [user]);
 
             const getItemCategory = (item) => item.category || 'Freshman';
@@ -534,6 +564,19 @@
 
             const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
             const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
+
+            // Filter Audit Logs based on Global Search
+            const filteredAuditLogs = useMemo(() => {
+                const query = globalSearchQuery.toLowerCase();
+                if (!query) return auditLogs;
+                return auditLogs.filter(log => 
+                    (log.user && log.user.toLowerCase().includes(query)) ||
+                    (log.action && log.action.toLowerCase().includes(query)) ||
+                    (log.entityType && log.entityType.toLowerCase().includes(query)) ||
+                    (log.entityId && log.entityId.toLowerCase().includes(query)) ||
+                    (log.details && log.details.toLowerCase().includes(query))
+                );
+            }, [auditLogs, globalSearchQuery]);
 
             const { totalPurchases, totalSavings, slowestVendor, pendingDeliveriesCount, totalOutstanding, agingSummary, vendorAging, avgProcessingTime, onTimeRate, weeklyNeedToPay, endOfWeek } = useMemo(() => {
                 let tPurchases = 0; let tSavings = 0; let pDeliveries = 0; let tOutstanding = 0;
@@ -623,12 +666,19 @@
             const handleFundSubmit = async (e) => {
                 e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
                 const targetApv = apvs.find(a => a.id === fundData.apvId); if (!targetApv) return;
-                try { await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); setIsFundModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); 
+                    await logAction('FUND', 'APV', targetApv.id, `Allocated funds. Vendor: ${targetApv.vendor}, Amount: ${targetApv.amount}`);
+                    setIsFundModalOpen(false); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleUnfund = async (apv) => {
                 if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
-                try { await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); 
+                    await logAction('UNFUND', 'APV', apv.id, `Removed funding state. Vendor: ${apv.vendor}`);
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openCheckModal = (apv = null) => {
@@ -667,14 +717,22 @@
                     settledDate: isCollected ? checkData.releaseDate : null
                 };
                 
-                try { await getDbRef().collection('apvs').doc(targetApv.id).update(updates); setIsCheckModalOpen(false); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(targetApv.id).update(updates); 
+                    await logAction('UPDATE_CHECK', 'APV', targetApv.id, `Status: ${checkData.checkStatus}, Check #: ${checkData.checkNumber}`);
+                    setIsCheckModalOpen(false); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const confirmResetFunding = (apv) => { setApvToReset(apv); setIsResetFundingModalOpen(true); };
             const executeResetFunding = async () => {
                 if (!user || accessLevel !== 3 || !apvToReset) return;
                 const updates = { funded: false, fundedDate: null, checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check', status: 'Unpaid', settledDate: null };
-                try { await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); setIsResetFundingModalOpen(false); setApvToReset(null); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); 
+                    await logAction('RESET_FUNDING', 'APV', apvToReset.id, `Cleared all funding and check history.`);
+                    setIsResetFundingModalOpen(false); setApvToReset(null); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const openEditPo = (po) => { 
@@ -724,8 +782,10 @@
                 e.preventDefault(); if (!user) return;
                 if (accessLevel === 4) return; if (editingPoId && accessLevel < 1) return; if (!editingPoId && accessLevel < 2) return; 
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
+                const action = editingPoId ? 'UPDATE' : 'CREATE';
                 try {
                     await getDbRef().collection('purchases').doc(newPo.id).set({ ...newPo, amount: Number(newPo.amount), grossAmount: Number(newPo.grossAmount || newPo.amount), discountAmount: Number(newPo.discountAmount || 0), status: poStatus, receivedDate: newPo.receivedDate || null });
+                    await logAction(action, 'PO', newPo.id, `Vendor: ${newPo.vendor}, Amount: ${newPo.amount}, Status: ${poStatus}`);
                     setIsPoModalOpen(false); setEditingPoId(null);
                 } catch(err) { alert("Action Failed: " + err.message); }
             };
@@ -744,15 +804,35 @@
                         baseApv.checkNumber = existing.checkNumber || ''; baseApv.checkDate = existing.checkDate || ''; baseApv.releaseDate = existing.releaseDate || ''; baseApv.checkStatus = existing.checkStatus || 'Pending Check';
                     }
                 }
-                try { await getDbRef().collection('apvs').doc(newApv.id).set(baseApv); setIsApvModalOpen(false); setEditingApvId(null); } catch(err) { alert("Action Failed: " + err.message); }
+                const action = editingApvId ? 'UPDATE' : 'CREATE';
+                try { 
+                    await getDbRef().collection('apvs').doc(newApv.id).set(baseApv); 
+                    await logAction(action, 'APV', newApv.id, `Linked PO: ${newApv.poId}, Amount: ${newApv.amount}`);
+                    setIsApvModalOpen(false); setEditingApvId(null); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const handleDeletePo = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('purchases').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
-            const handleDeleteApv = async (id) => { if (user && accessLevel === 3) try { await getDbRef().collection('apvs').doc(id).delete(); } catch(err){ alert("Delete Failed: " + err.message); } };
+            const handleDeletePo = async (id) => { 
+                if (user && accessLevel === 3) try { 
+                    await getDbRef().collection('purchases').doc(id).delete(); 
+                    await logAction('DELETE', 'PO', id, `Deleted record permanently.`);
+                } catch(err){ alert("Delete Failed: " + err.message); } 
+            };
+            
+            const handleDeleteApv = async (id) => { 
+                if (user && accessLevel === 3) try { 
+                    await getDbRef().collection('apvs').doc(id).delete(); 
+                    await logAction('DELETE', 'APV', id, `Deleted record permanently.`);
+                } catch(err){ alert("Delete Failed: " + err.message); } 
+            };
 
             const handleReceivePo = async (e) => {
                 e.preventDefault(); if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
-                try { await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate(''); } catch(err) { alert("Action Failed: " + err.message); }
+                try { 
+                    await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); 
+                    await logAction('RECEIVE', 'PO', selectedPo.id, `Marked received on ${receiveDate}`);
+                    setIsReceiveModalOpen(false); setSelectedPo(null); setReceiveDate(''); 
+                } catch(err) { alert("Action Failed: " + err.message); }
             };
 
             const handleClearAllData = async () => {
@@ -764,6 +844,7 @@
                     for (const doc of pSnap.docs) await doc.ref.delete();
                     const aSnap = await dbRef.collection('apvs').get();
                     for (const doc of aSnap.docs) await doc.ref.delete();
+                    await logAction('CLEAR_ALL', 'SYSTEM', 'DATABASE', `Wiped all POs and APVs from the system.`);
                 } catch(err) { alert("Clear Data Failed: " + err.message); }
                 setIsClearing(false); setIsClearModalOpen(false);
             };
@@ -780,6 +861,7 @@
                         password: newUserAccount.password, 
                         accessLevel: Number(newUserAccount.accessLevel) 
                     });
+                    await logAction('CREATE_USER', 'USER', userId, `Granted access level: ${newUserAccount.accessLevel}`);
                     setIsUserModalOpen(false);
                     setNewUserAccount({ username: '', password: '', accessLevel: 1 });
                 } catch(err) { alert("Failed to add user: " + err.message); }
@@ -788,7 +870,10 @@
             const handleDeleteUser = async (id) => {
                 if (user && accessLevel === 3) {
                     if (confirm("Delete this user account?")) {
-                        try { await getDbRef().collection('appUsers').doc(id).delete(); } 
+                        try { 
+                            await getDbRef().collection('appUsers').doc(id).delete(); 
+                            await logAction('DELETE_USER', 'USER', id, `Revoked access from dashboard.`);
+                        } 
                         catch(err) { alert("Delete Failed: " + err.message); }
                     }
                 }
@@ -836,6 +921,7 @@
                             await dbRef.doc(item.id).set(item, { merge: true });
                             successCount++;
                         }
+                        await logAction('IMPORT', 'BATCH', importType.toUpperCase(), `Imported ${successCount} records via CSV.`);
                         setImportingStatus(`Success! Uploaded ${successCount} records.`);
                         setTimeout(() => { setIsImportModalOpen(false); setImportFile(null); setImportingStatus(''); }, 2000);
                     } catch (error) { console.error(error); setImportingStatus('Error formatting CSV. Ensure columns match exactly.'); }
@@ -865,7 +951,7 @@
                 
                 // Master Failsafe Admin Login
                 if (u === 'admin' && p === 'admin123') { 
-                    setAccessLevel(3); setIsLoggedIn(true); setLoginError(false); 
+                    setAccessLevel(3); setIsLoggedIn(true); setLoginError(false); setCurrentUserName('admin (Master)');
                     return; 
                 }
                 
@@ -873,9 +959,7 @@
                 const matchedUser = appUsers.find(user => user.username.toLowerCase() === u && user.password === p);
                 
                 if (matchedUser) { 
-                    setAccessLevel(matchedUser.accessLevel); 
-                    setIsLoggedIn(true); 
-                    setLoginError(false); 
+                    setAccessLevel(matchedUser.accessLevel); setIsLoggedIn(true); setLoginError(false); setCurrentUserName(matchedUser.username);
                 } else { 
                     setLoginError(true); 
                 }
@@ -884,9 +968,11 @@
             const renderLoginPage = () => (
                 <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 animate-in fade-in">
                     <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
-                        <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-64 md:w-80 rounded-xl shadow-2xl mb-4 object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/10213b/ffffff?text=ETMC+elev8'; }} />
+                        <div className="w-64 md:w-80 bg-white p-6 rounded-2xl shadow-2xl mb-6 flex items-center justify-center border border-slate-700/50">
+                            <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-full max-h-32 object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/10213b?text=ETMC+elev8'; }} />
+                        </div>
                     </div>
-                    <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+                    <div className="sm:mx-auto sm:w-full sm:max-w-md">
                         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
                             <form className="space-y-6" onSubmit={handleLoginSubmit}>
                                 {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-200">Invalid username or password.</div>}
@@ -1448,12 +1534,85 @@
                 </div>
             );
 
+            // Audit Logs UI
+            const renderLogs = () => {
+                const getActionColor = (action) => {
+                    switch (action) {
+                        case 'CREATE': case 'CREATE_USER': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        case 'UPDATE': case 'UPDATE_CHECK': return 'bg-blue-50 text-blue-700 border-blue-200';
+                        case 'DELETE': case 'DELETE_USER': case 'CLEAR_ALL': return 'bg-red-50 text-red-700 border-red-200';
+                        case 'FUND': case 'RECEIVE': case 'IMPORT': return 'bg-purple-50 text-purple-700 border-purple-200';
+                        case 'UNFUND': case 'RESET_FUNDING': return 'bg-orange-50 text-orange-700 border-orange-200';
+                        default: return 'bg-gray-50 text-gray-700 border-gray-200';
+                    }
+                };
+
+                return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+                        <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-gray-50">
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900 flex items-center"><History className="mr-2 text-indigo-600" size={20} /> System Audit Logs</h3>
+                            <p className="text-xs text-gray-500 mt-1">A chronological history of all data modifications made in the dashboard.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs md:text-sm">
+                                <thead>
+                                    <tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase">
+                                        <th className="p-4">Timestamp</th>
+                                        <th className="p-4">User</th>
+                                        <th className="p-4">Action</th>
+                                        <th className="p-4">Target Ref</th>
+                                        <th className="p-4">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredAuditLogs.length === 0 ? (
+                                        <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No logs found matching your search.</td></tr>
+                                    ) : filteredAuditLogs.map(log => {
+                                        const dateObj = new Date(log.timestamp);
+                                        return (
+                                            <tr key={log.id} className="hover:bg-gray-50 transition-colors align-top">
+                                                <td className="p-4 whitespace-nowrap">
+                                                    <div className="font-bold text-gray-800">{dateObj.toLocaleDateString()}</div>
+                                                    <div className="text-[10px] text-gray-500">{dateObj.toLocaleTimeString()}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center text-gray-700 font-medium">
+                                                        <User size={14} className="mr-1.5 text-indigo-400" />
+                                                        {log.user}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getActionColor(log.action)}`}>
+                                                        {log.action}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="font-bold text-slate-800">{log.entityId}</div>
+                                                    <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{log.entityType}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-[11px] text-gray-600 font-mono bg-slate-50 border border-slate-100 p-2 rounded break-words">
+                                                        {log.details}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
             return (
                 <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden relative">
                     {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
                     <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col transform transition-transform md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-6 flex items-center justify-center border-b border-slate-800/50 bg-slate-950/30">
-                            <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="h-12 object-contain rounded" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/0f172a/ffffff?text=ETMC'; }} />
+                        <div className="p-4 flex items-center justify-center border-b border-slate-800/50 bg-slate-950/30">
+                            <div className="bg-white p-2 rounded-xl flex items-center justify-center w-full">
+                                <img src="./ETMC%20LOGO.jpg" alt="ETMC elev8" className="max-h-12 w-auto object-contain" onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/150x50/ffffff/10213b?text=ETMC'; }} />
+                            </div>
                         </div>
                         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
                             <button onClick={() => handleTabSwitch('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard className="mr-3" size={20} /> Dashboard</button>
@@ -1464,8 +1623,9 @@
                             <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
                             
                             {accessLevel === 3 && (
-                                <div className="pt-4 mt-4 border-t border-slate-800">
+                                <div className="pt-4 mt-4 border-t border-slate-800 space-y-2">
                                     <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>
+                                    <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-slate-800'}`}><History className="mr-3" size={20} /> System Logs</button>
                                 </div>
                             )}
                         </nav>
@@ -1522,6 +1682,7 @@
                             {activeTab === 'funding' && renderFundingReport()}
                             {activeTab === 'aging' && renderAgingReport()}
                             {activeTab === 'users' && accessLevel === 3 && renderUserManagement()}
+                            {activeTab === 'logs' && accessLevel === 3 && renderLogs()}
                         </div>
                     </main>
 
