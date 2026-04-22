@@ -351,7 +351,6 @@
             const [dbErrorMessage, setDbErrorMessage] = useState("");
 
             const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-            const [selectedBU, setSelectedBU] = useState('All');
             const [selectedCategory, setSelectedCategory] = useState('All');
             const [selectedMonth, setSelectedMonth] = useState('All');
 
@@ -391,8 +390,8 @@
 
             const [selectedPo, setSelectedPo] = useState(null);
             const [editingPoId, setEditingPoId] = useState(null);
-            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' });
-            const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
+            const [newPo, setNewPo] = useState({ id: '', businessUnit: 'ETMC', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' });
+            const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'Freshman', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
 
@@ -536,7 +535,7 @@
                 return () => { unsubPurchases(); unsubApvs(); unsubUsers(); unsubLogs(); };
             }, [user, isLoggedIn]);
 
-            const getItemCategory = (item) => item.category || 'General';
+            const getItemCategory = (item) => item.category || 'Freshman';
 
             const availableMonths = useMemo(() => {
                 const months = new Set();
@@ -558,7 +557,6 @@
             const baseFilteredPurchases = useMemo(() => {
                 const query = globalSearchQuery.toLowerCase();
                 return purchases.filter(p => {
-                    const matchBU = selectedBU === 'All' || p.businessUnit === selectedBU;
                     const matchCat = selectedCategory === 'All' || getItemCategory(p) === selectedCategory;
                     const matchMonth = selectedMonth === 'All' || (p.date && p.date.startsWith(selectedMonth));
                     const matchSearch = query === '' || 
@@ -568,14 +566,13 @@
                         (p.prRequestor && String(p.prRequestor).toLowerCase().includes(query)) ||
                         (p.remarks && String(p.remarks).toLowerCase().includes(query)) ||
                         apvs.some(a => a.poId === p.id && ((a.id && String(a.id).toLowerCase().includes(query)) || (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query))));
-                    return matchBU && matchCat && matchMonth && matchSearch;
+                    return matchCat && matchMonth && matchSearch;
                 });
-            }, [purchases, apvs, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
+            }, [purchases, apvs, selectedCategory, selectedMonth, globalSearchQuery]);
 
             const baseFilteredApvs = useMemo(() => {
                 const query = globalSearchQuery.toLowerCase();
                 return apvs.filter(a => {
-                    const matchBU = selectedBU === 'All' || a.businessUnit === selectedBU;
                     const matchCat = selectedCategory === 'All' || getItemCategory(a) === selectedCategory;
                     const matchMonth = selectedMonth === 'All' || (a.invoiceDate && a.invoiceDate.startsWith(selectedMonth));
                     const linkedPo = purchases.find(p => p.id === a.poId);
@@ -585,9 +582,9 @@
                         (a.vendor && String(a.vendor).toLowerCase().includes(query)) ||
                         (a.checkNumber && String(a.checkNumber).toLowerCase().includes(query)) ||
                         (linkedPo && ((linkedPo.remarks && String(linkedPo.remarks).toLowerCase().includes(query)) || (linkedPo.processorName && String(linkedPo.processorName).toLowerCase().includes(query)) || (linkedPo.prRequestor && String(linkedPo.prRequestor).toLowerCase().includes(query))));
-                    return matchBU && matchCat && matchMonth && matchSearch;
+                    return matchCat && matchMonth && matchSearch;
                 });
-            }, [apvs, purchases, selectedBU, selectedCategory, selectedMonth, globalSearchQuery]);
+            }, [apvs, purchases, selectedCategory, selectedMonth, globalSearchQuery]);
 
             const tabFilteredPurchases = useMemo(() => baseFilteredPurchases.filter(p => poStatusFilter === 'All' || p.status === poStatusFilter), [baseFilteredPurchases, poStatusFilter]);
             const tabFilteredApvs = useMemo(() => baseFilteredApvs.filter(a => apvStatusFilter === 'All' || a.status === apvStatusFilter), [baseFilteredApvs, apvStatusFilter]);
@@ -796,13 +793,13 @@
 
             const openEditPo = (po) => { 
                 setEditingPoId(po.id); 
-                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'General', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '', attachmentData: po.attachmentData || '' }); 
+                setNewPo({ ...po, businessUnit: po.businessUnit || 'ETMC', category: po.category || 'Freshman', prRequestor: po.prRequestor || '', receivedDate: po.receivedDate || '', amount: po.amount.toString(), grossAmount: (po.grossAmount || po.amount || '').toString(), discountAmount: (po.discountAmount || '').toString(), paymentTerms: po.paymentTerms || 'Terms', remarks: po.remarks || '', attachmentData: po.attachmentData || '' }); 
                 setIsPoModalOpen(true); 
             };
 
             const openEditApv = (apv) => { 
                 setEditingApvId(apv.id); 
-                setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', category: apv.category || 'General', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0], checkNumber: apv.checkNumber || '', checkDate: apv.checkDate || '', releaseDate: apv.releaseDate || '', checkStatus: (apv.checkStatus === 'Prepared' ? 'Check Created' : apv.checkStatus) || 'Pending Check' }); 
+                setNewApv({ ...apv, businessUnit: apv.businessUnit || 'ETMC', category: apv.category || 'Freshman', amount: apv.amount.toString(), paymentTerms: apv.paymentTerms || 'Terms', status: apv.status || 'Unpaid', settledDate: apv.settledDate || TODAY.toISOString().split('T')[0], checkNumber: apv.checkNumber || '', checkDate: apv.checkDate || '', releaseDate: apv.releaseDate || '', checkStatus: (apv.checkStatus === 'Prepared' ? 'Check Created' : apv.checkStatus) || 'Pending Check' }); 
                 setIsApvModalOpen(true); 
             };
 
@@ -815,34 +812,7 @@
                 setCurrentEmailDraft(result); setIsDraftingEmail(false);
             };
 
-            const draftNoApvEmail = async (po) => {
-                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const result = await callGeminiAPI(`Write a professional internal email to the purchasing processor (${po.processorName || 'Team'}) regarding Purchase Order ${po.id} for ${po.vendor}. The PO has been created and may already be received/completed, but no Accounts Payable Voucher (APV) has been logged for it yet. Ask them to urgently process the APV so we can schedule the payment and avoid delays. Keep it under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const draftDeliveryFollowUpEmail = async (po) => {
-                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const expectedDate = new Date(po.expectedDelivery).toLocaleDateString();
-                const notes = po.remarks ? ` Note: ${po.remarks}` : '';
-                const result = await callGeminiAPI(`Write a professional email to our vendor, ${po.vendor}, following up on the delivery of Purchase Order ${po.id}. The expected delivery date was ${expectedDate}, and it is currently delayed.${notes} Ask for a status update and a revised delivery schedule. Keep it polite but firm, under 100 words. Do not include a subject line. Sign the email as the Purchasing Team.`);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-            
-            const draftNoCheckEmail = async (apv) => {
-                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const result = await callGeminiAPI(`Write a professional internal email to the Treasury Team regarding APV ${apv.id} for ${apv.vendor} amounting to ${formatCurrency(apv.amount)}. The APV is processed but no check has been created or assigned to it yet. Ask them for a quick status update on the check preparation so we can inform the vendor. Keep it under 100 words. Do not include a subject line. Sign the email as the Accounts Payable Team.`);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const draftVendorEmail = async (vendorData) => {
-                setEmailModalOpen(true); setIsDraftingEmail(true); setCurrentEmailDraft(''); setCopySuccess(false);
-                const vendorSummary = `Vendor: ${vendorData.name}\nTotal Due: ${formatCurrency(vendorData.total)}\nCurrent: ${formatCurrency(vendorData['Current'])}\n1-30 Days: ${formatCurrency(vendorData['1-30 Days'])}\n31-60 Days: ${formatCurrency(vendorData['31-60 Days'])}\n61-90 Days: ${formatCurrency(vendorData['61-90 Days'])}\nOver 90 Days: ${formatCurrency(vendorData['> 90 Days'])}`;
-                const result = await callGeminiAPI(`Write a professional email to our vendor, ${vendorData.name}, regarding our outstanding balance.\nHere is the aging breakdown: \n${vendorSummary}\nAcknowledge the delayed payments (especially anything over 60 days), apologize briefly for the delay, and assure them that we are actively reviewing our payables and will provide a payment schedule shortly. Keep it polite, professional, and under 150 words. Do not include subject line, just the body. Sign the email as the Purchasing Team.`);
-                setCurrentEmailDraft(result); setIsDraftingEmail(false);
-            };
-
-            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'General', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' }); setIsPoModalOpen(true); };
+            const openAddPo = () => { setEditingPoId(null); setNewPo({ id: '', businessUnit: 'ETMC', category: 'Freshman', prRequestor: '', processorName: '', prReceivedDate: '', date: '', expectedDelivery: '', receivedDate: '', vendor: '', description: '', amount: '', grossAmount: '', discountAmount: '', paymentTerms: 'Terms', remarks: '', attachmentData: '' }); setIsPoModalOpen(true); };
 
             const handleAddPo = async (e) => {
                 e.preventDefault(); if (!user) return;
@@ -856,7 +826,7 @@
                 } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'General', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' }); setIsApvModalOpen(true); };
+            const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'Freshman', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' }); setIsApvModalOpen(true); };
 
             const handleAddApv = async (e) => {
                 e.preventDefault(); if (!user || accessLevel < 2 || accessLevel === 4) return; 
@@ -961,7 +931,7 @@
                             item.amount = Number(item.amount?.replace(/[^0-9.-]+/g,"") || 0);
                             let cleanBU = (item.businessUnit || '').toUpperCase().trim();
                             item.businessUnit = ['ETMC', 'EMI', 'EHI'].includes(cleanBU) ? cleanBU : 'ETMC';
-                            item.category = item.category || 'General'; 
+                            item.category = item.category || 'Freshman'; 
                             
                             if (importType === 'purchases') {
                                 item.prReceivedDate = standardizeDate(item.prReceivedDate);
@@ -1764,15 +1734,8 @@
                                     </select>
                                     <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Category">
                                         <option value="All">All Categories</option>
-                                        <option value="Site Rental">Site Rental</option>
-                                        <option value="Acquired Materials">Acquired Materials</option>
-                                        <option value="Services">Services</option>
                                         <option value="Freshman">Freshman</option>
                                         <option value="Trading">Trading</option>
-                                        <option value="General">General/Other</option>
-                                    </select>
-                                    <select value={selectedBU} onChange={e => setSelectedBU(e.target.value)} className="flex-1 sm:flex-none bg-white border border-gray-300 text-[10px] md:text-sm font-medium rounded-lg p-2 outline-none cursor-pointer hover:bg-gray-50 shadow-sm" title="Filter by Business Unit">
-                                        <option value="All">All BUs</option><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option>
                                     </select>
                                 </div>
                             </div>
@@ -1942,7 +1905,7 @@
                                 <form onSubmit={handleAddApv} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">APV Number</label><input required readOnly={!!editingApvId} value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingApvId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => { const val = e.target.value; const matched = purchases.find(p => p.id === val); setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor, businessUnit: matched.businessUnit, category: matched.category || 'General', amount: matched.amount.toString()} : {})}); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => { const val = e.target.value; const matched = purchases.find(p => p.id === val); setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor, businessUnit: matched.businessUnit, category: matched.category || 'Freshman', amount: matched.amount.toString()} : {})}); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
@@ -1954,7 +1917,7 @@
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Billed Amount (₱)</label><input required type="number" step="0.01" value={newApv.amount} onChange={e => setNewApv({...newApv, amount: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select value={newApv.category || 'General'} onChange={e => setNewApv({...newApv, category: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select value={newApv.category || 'Freshman'} onChange={e => setNewApv({...newApv, category: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
                                     </div>
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsApvModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Save APV</button></div>
                                 </form>
@@ -1986,7 +1949,7 @@
                                     </div>
                                     <div className="grid grid-cols-3 gap-3">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Business Unit</label><select disabled={accessLevel === 1} value={newPo.businessUnit} onChange={e => setNewPo({...newPo, businessUnit: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="ETMC">ETMC</option><option value="EMI">EMI</option><option value="EHI">EHI</option></select></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'General'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="General">General / Other</option><option value="Site Rental">Site Rental</option><option value="Acquired Materials">Acquired Materials</option><option value="Services">Services</option><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'Freshman'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select disabled={accessLevel === 1} value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
