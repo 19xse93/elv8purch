@@ -394,6 +394,7 @@
             const [newApv, setNewApv] = useState({ id: '', poId: '', businessUnit: 'ETMC', category: 'Freshman', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: '', paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' });
             const [editingApvId, setEditingApvId] = useState(null);
             const [receiveDate, setReceiveDate] = useState('');
+            const [itemToDelete, setItemToDelete] = useState({ type: null, id: null });
 
             const [poStatusFilter, setPoStatusFilter] = useState('All');
             const [apvStatusFilter, setApvStatusFilter] = useState('All');
@@ -848,18 +849,27 @@
                 } catch(err) { alert("Action Failed: " + err.message); }
             };
 
-            const handleDeletePo = async (id) => { 
-                if (user && accessLevel === 3) try { 
-                    await getDbRef().collection('purchases').doc(id).delete(); 
-                    await logAction('DELETE', 'PO', id, `Deleted record permanently.`);
-                } catch(err){ alert("Delete Failed: " + err.message); } 
+            const handleDeletePo = (id) => { 
+                if (user && accessLevel === 3) setItemToDelete({ type: 'PO', id });
             };
             
-            const handleDeleteApv = async (id) => { 
-                if (user && accessLevel === 3) try { 
-                    await getDbRef().collection('apvs').doc(id).delete(); 
-                    await logAction('DELETE', 'APV', id, `Deleted record permanently.`);
-                } catch(err){ alert("Delete Failed: " + err.message); } 
+            const handleDeleteApv = (id) => { 
+                if (user && accessLevel === 3) setItemToDelete({ type: 'APV', id });
+            };
+
+            const confirmDeleteItem = async () => {
+                if (!user || accessLevel !== 3 || !itemToDelete.id) return;
+                const { type, id } = itemToDelete;
+                try {
+                    if (type === 'PO') {
+                        await getDbRef().collection('purchases').doc(id).delete(); 
+                        await logAction('DELETE', 'PO', id, `Deleted record permanently.`);
+                    } else if (type === 'APV') {
+                        await getDbRef().collection('apvs').doc(id).delete(); 
+                        await logAction('DELETE', 'APV', id, `Deleted record permanently.`);
+                    }
+                } catch(err) { alert("Delete Failed: " + err.message); }
+                setItemToDelete({ type: null, id: null });
             };
 
             const handleReceivePo = async (e) => {
@@ -1754,6 +1764,25 @@
                     </main>
 
                     {/* Modals */}
+                    {itemToDelete.id && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
+                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
+                                    <h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Delete {itemToDelete.type}</h3>
+                                    <button onClick={() => setItemToDelete({ type: null, id: null })} className="text-red-400 hover:text-red-600"><X size={20} /></button>
+                                </div>
+                                <div className="p-4 md:p-6 space-y-4 text-center">
+                                    <p className="text-sm md:text-base text-gray-700">Are you sure you want to permanently delete {itemToDelete.type === 'PO' ? 'Purchase Order' : 'APV'} <strong className="whitespace-nowrap">{itemToDelete.id}</strong>?</p>
+                                    <p className="text-xs md:text-sm text-red-600 font-bold bg-red-50 p-2 rounded border border-red-200">This action cannot be undone and will be permanently logged.</p>
+                                </div>
+                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3">
+                                    <button onClick={() => setItemToDelete({ type: null, id: null })} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
+                                    <button onClick={confirmDeleteItem} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center">Delete Permanently</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {isUserModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
