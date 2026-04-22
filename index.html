@@ -129,15 +129,18 @@
         const callGeminiAPI = async (prompt) => {
             // IMPORTANT: If you download and host this yourself, place your Gemini API key here!
             // Example:  = "AIzaSyYourRealKeyHere12345...";
-            const apiKey = "AIzaSyBZtNoFrS0of0EIr7jLLb3kW9h6WaDFu6A"; 
+            const apiKey = "AIzaSyBZtNoFrS0of0EIr7jLLb3kW9h6WaDFu6A";
             
-            const modelName = "gemini-2.5-flash-preview-09-2025";
+             // FIX: Using gemini-1.5-flash which is widely available and stable for all regions/keys
+            
+            const modelName = "gemini-1.5-flash"; 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             const payload = { 
                 contents: [{ parts: [{ text: prompt }] }], 
                 systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } 
             };
             
+           
             const fetchWithRetry = async (retries = 5) => {
                 const delays = [1000, 2000, 4000, 8000, 16000];
                 for (let i = 0; i < retries; i++) {
