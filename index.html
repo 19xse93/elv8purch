@@ -127,7 +127,10 @@
 
         // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
-            const apiKey = ""; 
+            // IMPORTANT: If you download and host this yourself, place your Gemini API key here!
+            // Example:  = "AIzaSyYourRealKeyHere12345...";
+            const apiKey = "AIzaSyBZtNoFrS0of0EIr7jLLb3kW9h6WaDFu6A"; 
+            
             const modelName = "gemini-2.5-flash-preview-09-2025";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             const payload = { 
@@ -140,10 +143,19 @@
                 for (let i = 0; i < retries; i++) {
                     try {
                         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+                        if (!response.ok) {
+                            if (response.status === 403) {
+                                throw new Error("HTTP 403: Missing or Invalid API Key. If you exported this dashboard to run locally, you MUST insert your own Gemini API Key into the 'callGeminiAPI' function inside the code.");
+                            }
+                            if (response.status === 404) {
+                                throw new Error(`HTTP 404: The specified model (${modelName}) might be restricted or invalid in your region/key.`);
+                            }
+                            throw new Error(`HTTP Error ${response.status}`);
+                        }
                         return await response.json();
                     } catch (err) {
-                        if (i === retries - 1) throw err;
+                        // Do not retry 403s or 404s, fail immediately
+                        if (i === retries - 1 || err.message.includes("HTTP 403") || err.message.includes("HTTP 404")) throw err;
                         await new Promise(res => setTimeout(res, delays[i]));
                     }
                 }
@@ -153,7 +165,7 @@
                 const data = await fetchWithRetry();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
             } catch (error) { 
-                return `Failed to connect to AI: ${error.message}`; 
+                return `Failed to connect to AI: \n${error.message}`; 
             }
         };
 
