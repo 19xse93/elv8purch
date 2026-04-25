@@ -126,12 +126,15 @@
 
         // --- Helpers ---
         const callGeminiAPI = async (prompt) => {
-            // IMPORTANT: If you download and host this yourself, place your Gemini API key here!
-            const apiKey = "AIzaSyBZtNoFrS0of0EIr7jLLb3kW9h6WaDFu6A"; 
+            // ⚠️ WARNING: DO NOT PUT YOUR FIREBASE API KEY HERE!
+            // To use this feature outside of the preview environment, you need a dedicated
+            // Gemini API Key from: https://aistudio.google.com/
             
-            // DYNAMIC MODEL SELECTION:
-            // If the key is empty, we are in the Canvas Preview environment -> Use required preview model.
-            // If the key has been provided, we are in a local/exported environment -> Use standard 1.5 flash.
+            const apiKey = ""; // <--- Leave empty if testing here. Paste Gemini Key if running locally.
+            
+            // Smart Model Selection:
+            // If no key is provided, it uses the special preview model required for this sandbox.
+            // If a key IS provided, it uses the widely available 1.5-flash model.
             const modelName = apiKey === "" ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
             
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -140,17 +143,17 @@
                 systemInstruction: { parts: [{ text: "You are an expert financial analyst and accounts payable manager." }] } 
             };
             
-            const fetchWithRetry = async (retries = 5) => {
-                const delays = [1000, 2000, 4000, 8000, 16000];
+            const fetchWithRetry = async (retries = 3) => {
+                const delays = [1000, 2000, 4000];
                 for (let i = 0; i < retries; i++) {
                     try {
                         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         if (!response.ok) {
                             if (response.status === 403) {
-                                throw new Error("HTTP 403: Missing or Invalid API Key. If running locally, you must place your Google AI Studio API Key in the 'apiKey' variable.");
+                                throw new Error("HTTP 403: Invalid API Key. Ensure you are using a Gemini API Key from Google AI Studio.");
                             }
                             if (response.status === 404) {
-                                throw new Error(`HTTP 404: The model (${modelName}) was not found. If running locally, make sure your API key has access to standard models.`);
+                                throw new Error(`HTTP 404: The AI model was not found. Note: A Firebase API key will NOT work here. You must use a Gemini API Key.`);
                             }
                             throw new Error(`HTTP Error ${response.status}`);
                         }
