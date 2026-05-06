@@ -360,6 +360,7 @@
 
             const [poStatusFilter, setPoStatusFilter] = useState('All');
             const [apvStatusFilter, setApvStatusFilter] = useState('All');
+            const [treasuryStatusFilter, setTreasuryStatusFilter] = useState('All');
             const [importType, setImportType] = useState('purchases');
             const [importFile, setImportFile] = useState(null);
             const [importingStatus, setImportingStatus] = useState('');
@@ -1068,7 +1069,7 @@
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-rose-50 rounded-lg text-rose-600 self-start sm:self-auto"><DollarSign size={20}/></div><div><p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Outstanding APV</p><h3 className="text-sm md:text-xl font-bold text-gray-900">{formatCurrency(totalOutstanding)}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-amber-50 rounded-lg text-amber-600 self-start sm:self-auto shrink-0"><AlertCircle size={20}/></div><div className="min-w-0 flex-1 w-full"><p className="text-[10px] md:text-xs text-gray-500 font-medium truncate">Past Due Payables</p><h3 className="text-sm md:text-xl font-bold text-gray-900 truncate" title={formatCurrency(totalOutstanding - agingSummary['Current'])}>{formatCurrency(totalOutstanding - agingSummary['Current'])}</h3></div></div>
                             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-purple-50 rounded-lg text-purple-600 self-start sm:self-auto shrink-0"><FileSignature size={20}/></div><div className="min-w-0 flex-1 w-full"><p className="text-[10px] md:text-xs text-gray-500 font-medium truncate">Pending Checks</p><h3 className="text-sm md:text-xl font-bold text-gray-900 truncate" title={formatCurrency(totalPendingChecks)}>{formatCurrency(totalPendingChecks)}</h3></div></div>
-                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-teal-50 rounded-lg text-teal-600 self-start sm:self-auto shrink-0"><CheckCircle size={20}/></div><div className="min-w-0 flex-1 w-full"><p className="text-[10px] md:text-xs text-gray-500 font-medium truncate">Paid / Released</p><h3 className="text-sm md:text-xl font-bold text-gray-900 truncate" title={formatCurrency(totalPaidChecks)}>{formatCurrency(totalPaidChecks)}</h3></div></div>
+                            <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4"><div className="p-2 md:p-3 bg-teal-50 rounded-lg text-teal-600 self-start sm:self-auto shrink-0"><CheckCircle size={20}/></div><div className="minw-0 flex-1 w-full"><p className="text-[10px] md:text-xs text-gray-500 font-medium truncate">Paid / Released</p><h3 className="text-sm md:text-xl font-bold text-gray-900 truncate" title={formatCurrency(totalPaidChecks)}>{formatCurrency(totalPaidChecks)}</h3></div></div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
@@ -1283,11 +1284,21 @@
             const renderTreasury = () => {
                 const treasuryApvs = baseFilteredApvs.filter(a => a.status === 'Unpaid' || a.checkNumber || a.funded);
                 
-                const sortedTreasury = [...treasuryApvs].sort((a, b) => {
-                    if (a.status === 'Unpaid' && b.status === 'Paid') return -1;
-                    if (a.status === 'Paid' && b.status === 'Unpaid') return 1;
-                    return 0;
-                });
+                const sortedTreasury = [...treasuryApvs]
+                    .filter(apv => {
+                        if (treasuryStatusFilter === 'All') return true;
+                        const isPaid = apv.status === 'Paid';
+                        const hasCheck = !!apv.checkNumber;
+                        if (treasuryStatusFilter === 'Pending Check') return !isPaid && !hasCheck;
+                        if (treasuryStatusFilter === 'Check Created') return !isPaid && hasCheck;
+                        if (treasuryStatusFilter === 'Released / Paid') return isPaid;
+                        return true;
+                    })
+                    .sort((a, b) => {
+                        if (a.status === 'Unpaid' && b.status === 'Paid') return -1;
+                        if (a.status === 'Paid' && b.status === 'Unpaid') return 1;
+                        return 0;
+                    });
 
                 let earmarkedAmt = 0; let preparedAmt = 0; let releasedAmt = 0;
                 treasuryApvs.forEach(apv => {
@@ -1300,16 +1311,30 @@
 
                 return (
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
-                        <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                        <div className="px-4 md:px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                             <h3 className="text-base md:text-lg font-semibold text-gray-900 flex items-center"><Landmark className="mr-2 text-indigo-600" size={20} /> Treasury Records</h3>
-                            {(accessLevel === 1 || accessLevel === 3 || accessLevel === 4) && (
-                                <div className="flex space-x-2">
-                                    {(accessLevel === 3 || accessLevel === 4) && (
-                                        <button onClick={() => openFundModal()} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center"><Landmark size={14} className="mr-1"/> For Funding</button>
-                                    )}
-                                    <button onClick={() => openCheckModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors flex items-center"><FileSignature size={14} className="mr-1"/> Create Check</button>
+                            
+                            <div className="flex flex-col sm:flex-row items-center w-full sm:w-auto gap-3">
+                                <div className="relative w-full sm:w-48">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Filter size={14} className="text-gray-400" /></div>
+                                    <select value={treasuryStatusFilter} onChange={e => setTreasuryStatusFilter(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-900 text-xs md:text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block pl-8 pr-8 py-2 outline-none transition-colors appearance-none cursor-pointer">
+                                        <option value="All">All Status</option>
+                                        <option value="Pending Check">Pending Check</option>
+                                        <option value="Check Created">Check Created</option>
+                                        <option value="Released / Paid">Released / Paid</option>
+                                    </select>
+                                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                                 </div>
-                            )}
+                                
+                                {(accessLevel === 1 || accessLevel === 3 || accessLevel === 4) && (
+                                    <div className="flex space-x-2 w-full sm:w-auto">
+                                        {(accessLevel === 3 || accessLevel === 4) && (
+                                            <button onClick={() => openFundModal()} className="flex-1 sm:flex-none justify-center bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center"><Landmark size={14} className="mr-1"/> For Funding</button>
+                                        )}
+                                        <button onClick={() => openCheckModal()} className="flex-1 sm:flex-none justify-center bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors flex items-center"><FileSignature size={14} className="mr-1"/> Create Check</button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 md:p-6 border-b border-gray-100 bg-slate-50">
