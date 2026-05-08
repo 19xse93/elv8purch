@@ -803,7 +803,7 @@
             const handleAddApv = async (e) => {
                 e.preventDefault(); if (!user || accessLevel < 2 || accessLevel === 4) return; 
                 const isPaid = newApv.status === 'Paid';
-                const baseApv = { ...newApv, amount: Number(newApv.amount), status: newApv.status, settledDate: isPaid ? newApv.settledDate : null };
+                const baseApv = { ...newApv, businessUnit: newApv.businessUnit || 'ETMC', category: newApv.category || 'Freshman', amount: Number(newApv.amount || 0), status: newApv.status, settledDate: isPaid ? newApv.settledDate : null };
                 if (isPaid) { baseApv.funded = true; if (!baseApv.fundedDate) baseApv.fundedDate = baseApv.settledDate || TODAY.toISOString().split('T')[0]; }
                 if (editingApvId) {
                     const existing = apvs.find(a => a.id === editingApvId);
@@ -1918,7 +1918,7 @@
                                 <form onSubmit={handleAddApv} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">APV Number</label><input required readOnly={!!editingApvId} value={newApv.id} onChange={e => setNewApv({...newApv, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingApvId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => { const val = e.target.value; const matched = purchases.find(p => p.id === val); setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor, businessUnit: matched.businessUnit, category: matched.category || 'Freshman', amount: matched.amount.toString()} : {})}); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Ref</label><input required value={newApv.poId} onChange={e => { const val = e.target.value; const matched = purchases.find(p => p.id === val); setNewApv({...newApv, poId: val, ...(matched ? {vendor: matched.vendor || '', businessUnit: matched.businessUnit || 'ETMC', category: matched.category || 'Freshman', amount: (matched.amount || 0).toString()} : {})}); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required value={newApv.vendor} onChange={e => setNewApv({...newApv, vendor: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
