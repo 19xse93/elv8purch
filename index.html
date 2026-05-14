@@ -273,6 +273,15 @@
             return result;
         };
 
+        const mapAccessLevelToPermissions = (level) => {
+            const p = { managePo: false, manageApv: false, manageTreasury: false, deleteRecords: false, manageUsers: false, systemAdmin: false, exportData: false };
+            if (level === 3) return { managePo: true, manageApv: true, manageTreasury: true, deleteRecords: true, manageUsers: true, systemAdmin: true, exportData: true };
+            if (level === 4) return { ...p, manageTreasury: true, exportData: true };
+            if (level === 2) return { ...p, managePo: true, manageApv: true, exportData: true };
+            if (level === 1) return { ...p, exportData: true };
+            return p; // level 0 or guest
+        };
+
         // --- Error Boundary ---
         class ErrorBoundary extends React.Component {
             constructor(props) {
@@ -324,7 +333,7 @@
             const [selectedMonth, setSelectedMonth] = useState('All');
 
             // Authentication & Authorization
-            const [accessLevel, setAccessLevel] = useState(0); 
+            const [userPermissions, setUserPermissions] = useState(mapAccessLevelToPermissions(0)); 
             const [currentUserName, setCurrentUserName] = useState('');
             const [isLoggedIn, setIsLoggedIn] = useState(false);
             const [loginEmail, setLoginEmail] = useState('');
@@ -332,9 +341,16 @@
             const [loginError, setLoginError] = useState(false);
             const [showPassword, setShowPassword] = useState(false);
 
+            // Registration States
+            const [isRegistering, setIsRegistering] = useState(false);
+            const [registerName, setRegisterName] = useState('');
+            const [registerEmail, setRegisterEmail] = useState('');
+            const [registerPassword, setRegisterPassword] = useState('');
+            const [registerDepartment, setRegisterDepartment] = useState('Purchasing');
+
             // Modals & Action States
             const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-            const [newUserAccount, setNewUserAccount] = useState({ email: '', accessLevel: 1 });
+            const [newUserAccount, setNewUserAccount] = useState({ email: '', permissions: mapAccessLevelToPermissions(1) });
             const [isPoModalOpen, setIsPoModalOpen] = useState(false);
             const [isApvModalOpen, setIsApvModalOpen] = useState(false);
             const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -406,24 +422,25 @@
                                 try {
                                     const userDoc = await getDbRef().collection('appUsers').doc(email).get();
                                     if (userDoc.exists) {
-                                        setAccessLevel(userDoc.data().accessLevel);
+                                        const data = userDoc.data();
+                                        setUserPermissions(data.permissions || mapAccessLevelToPermissions(data.accessLevel || 0));
                                     } else {
-                                        setAccessLevel(3); // FORCED SUPERUSER for initial setup
+                                        setUserPermissions(mapAccessLevelToPermissions(3)); // FORCED SUPERUSER for initial setup
                                     }
                                     setCurrentUserName(email);
                                 } catch (e) {
                                     console.error("Access Level Fetch Failed", e);
-                                    setAccessLevel(3); 
+                                    setUserPermissions(mapAccessLevelToPermissions(3)); 
                                     setCurrentUserName(email);
                                 }
                             } else {
-                                setAccessLevel(3);
+                                setUserPermissions(mapAccessLevelToPermissions(3));
                                 setCurrentUserName('Admin (Canvas Preview)');
                             }
                         } else {
                             setUser(null);
                             setIsLoggedIn(false);
-                            setAccessLevel(0);
+                            setUserPermissions(mapAccessLevelToPermissions(0));
                         }
                         setIsDataLoading(false);
                     });
@@ -476,7 +493,10 @@
 
                     unsubUsers = dbRef.collection('appUsers').onSnapshot(
                         (snapshot) => {
-                            const loadedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            const loadedData = snapshot.docs.map(doc => {
+                                const data = doc.data();
+                                return { id: doc.id, ...data, permissions: data.permissions || mapAccessLevelToPermissions(data.accessLevel || 0) };
+                            });
                             setAppUsers(loadedData);
                         },
                         (error) => { console.warn("Users listener error:", error); }
@@ -670,7 +690,7 @@
 
             const openFundModal = (apv = null) => { setFundData({ apvId: apv ? apv.id : '', fundDate: TODAY.toISOString().split('T')[0] }); setIsFundModalOpen(true); };
             const handleFundSubmit = async (e) => {
-                e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                e.preventDefault(); if (!user || !userPermissions.manageTreasury) return;
                 const targetApv = apvs.find(a => a.id === fundData.apvId); if (!targetApv) return;
                 try { 
                     await getDbRef().collection('apvs').doc(targetApv.id).update({ funded: true, fundedDate: fundData.fundDate }); 
@@ -680,7 +700,7 @@
             };
 
             const handleUnfund = async (apv) => {
-                if (!user || (accessLevel !== 3 && accessLevel !== 4)) return;
+                if (!user || !userPermissions.manageTreasury) return;
                 try { 
                     await getDbRef().collection('apvs').doc(apv.id).update({ funded: false, fundedDate: null }); 
                     await logAction('UNFUND', 'APV', apv.id, `Removed funding state. Vendor: ${apv.vendor}`);
@@ -710,7 +730,7 @@
             };
 
             const handleSaveCheck = async (e) => {
-                e.preventDefault(); if (!user || (accessLevel !== 3 && accessLevel !== 4 && accessLevel !== 1)) return;
+                e.preventDefault(); if (!user || !userPermissions.manageTreasury) return;
                 const targetApv = apvs.find(a => a.id === checkApvId); if (!targetApv) return;
                 const isCollected = checkData.checkStatus === 'Collected';
                 
@@ -732,7 +752,7 @@
 
             const confirmResetFunding = (apv) => { setApvToReset(apv); setIsResetFundingModalOpen(true); };
             const executeResetFunding = async () => {
-                if (!user || accessLevel !== 3 || !apvToReset) return;
+                if (!user || !userPermissions.manageTreasury || !apvToReset) return;
                 const updates = { funded: false, fundedDate: null, checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check', status: 'Unpaid', settledDate: null };
                 try { 
                     await getDbRef().collection('apvs').doc(apvToReset.id).update(updates); 
@@ -788,7 +808,7 @@
 
             const handleAddPo = async (e) => {
                 e.preventDefault(); if (!user) return;
-                if (accessLevel === 4) return; if (editingPoId && accessLevel < 1) return; if (!editingPoId && accessLevel < 2) return; 
+                if (!userPermissions.managePo) return; 
                 const poStatus = newPo.receivedDate ? 'Invoiced' : (editingPoId ? (purchases.find(p => p.id === editingPoId)?.status || 'Pending') : 'Pending');
                 const action = editingPoId ? 'UPDATE' : 'CREATE';
                 try {
@@ -801,7 +821,7 @@
             const openAddApv = () => { setEditingApvId(null); setNewApv({ id: '', poId: '', businessUnit: 'ETMC', category: 'Freshman', vendor: '', invoiceDate: '', dueDate: '', amount: '', funded: false, fundedDate: '', settledDate: TODAY.toISOString().split('T')[0], paymentTerms: 'Terms', status: 'Unpaid', checkNumber: '', checkDate: '', releaseDate: '', checkStatus: 'Pending Check' }); setIsApvModalOpen(true); };
 
             const handleAddApv = async (e) => {
-                e.preventDefault(); if (!user || accessLevel < 2 || accessLevel === 4) return; 
+                e.preventDefault(); if (!user || !userPermissions.manageApv) return; 
                 const isPaid = newApv.status === 'Paid';
                 const baseApv = { ...newApv, businessUnit: newApv.businessUnit || 'ETMC', category: newApv.category || 'Freshman', amount: Number(newApv.amount || 0), status: newApv.status, settledDate: isPaid ? newApv.settledDate : null };
                 if (isPaid) { baseApv.funded = true; if (!baseApv.fundedDate) baseApv.fundedDate = baseApv.settledDate || TODAY.toISOString().split('T')[0]; }
@@ -821,15 +841,15 @@
             };
 
             const handleDeletePo = (id) => { 
-                if (user && accessLevel === 3) setItemToDelete({ type: 'PO', id });
+                if (user && userPermissions.deleteRecords) setItemToDelete({ type: 'PO', id });
             };
             
             const handleDeleteApv = (id) => { 
-                if (user && accessLevel === 3) setItemToDelete({ type: 'APV', id });
+                if (user && userPermissions.deleteRecords) setItemToDelete({ type: 'APV', id });
             };
 
             const confirmDeleteItem = async () => {
-                if (!user || accessLevel !== 3 || !itemToDelete.id) return;
+                if (!user || !userPermissions.deleteRecords || !itemToDelete.id) return;
                 const { type, id } = itemToDelete;
                 try {
                     if (type === 'PO') {
@@ -844,7 +864,7 @@
             };
 
             const handleReceivePo = async (e) => {
-                e.preventDefault(); if (!user || !selectedPo || accessLevel < 2 || accessLevel === 4) return;
+                e.preventDefault(); if (!user || !selectedPo || !userPermissions.managePo) return;
                 try { 
                     await getDbRef().collection('purchases').doc(selectedPo.id).update({ receivedDate: receiveDate, status: 'Invoiced' }); 
                     await logAction('RECEIVE', 'PO', selectedPo.id, `Marked received on ${receiveDate}`);
@@ -853,7 +873,7 @@
             };
 
             const handleClearAllData = async () => {
-                if (!user || accessLevel !== 3) return;
+                if (!user || !userPermissions.systemAdmin) return;
                 setIsClearing(true);
                 try {
                     const dbRef = getDbRef();
@@ -868,23 +888,23 @@
 
             const handleAddUser = async (e) => {
                 e.preventDefault();
-                if (!user || accessLevel !== 3) return;
+                if (!user || !userPermissions.manageUsers) return;
                 try {
                     const email = newUserAccount.email.toLowerCase().trim();
                     if (!email) { alert('Invalid email format'); return; }
                     
                     await getDbRef().collection('appUsers').doc(email).set({ 
                         email: email, 
-                        accessLevel: Number(newUserAccount.accessLevel) 
+                        permissions: newUserAccount.permissions 
                     });
-                    await logAction('UPDATE_ACCESS', 'USER', email, `Set access level to: ${newUserAccount.accessLevel}`);
+                    await logAction('UPDATE_ACCESS', 'USER', email, `Updated custom access permissions.`);
                     setIsUserModalOpen(false);
-                    setNewUserAccount({ email: '', accessLevel: 1 });
+                    setNewUserAccount({ email: '', permissions: mapAccessLevelToPermissions(1) });
                 } catch(err) { alert("Failed to save user access: " + err.message); }
             };
 
             const handleDeleteUser = async (email) => {
-                if (user && accessLevel === 3) {
+                if (user && userPermissions.manageUsers) {
                     if (confirm(`Remove custom access level for ${email}?`)) {
                         try { 
                             await getDbRef().collection('appUsers').doc(email).delete(); 
@@ -896,7 +916,7 @@
             };
 
             const handleImportSubmit = async (e) => {
-                e.preventDefault(); if (!user || accessLevel !== 3 || !importFile) return;
+                e.preventDefault(); if (!user || !userPermissions.systemAdmin || !importFile) return;
                 setImportingStatus('Parsing CSV file...');
                 const reader = new FileReader();
                 reader.onload = async (event) => {
@@ -1053,6 +1073,38 @@
                 }
             };
 
+            const handleRegisterSubmit = async (e) => {
+                e.preventDefault();
+                setIsDataLoading(true);
+                setLoginError(false);
+                setDbErrorMessage("");
+
+                try {
+                    await firebase.auth().createUserWithEmailAndPassword(registerEmail, registerPassword);
+                    
+                    let defaultAccess = 0;
+                    if (registerDepartment === 'Purchasing') defaultAccess = 2; // Level 2 Access
+                    else if (registerDepartment === 'AP') defaultAccess = 2; // Level 2 Access
+                    else if (registerDepartment === 'Treasury') defaultAccess = 4; // Treasury Access
+                    else if (registerDepartment === 'Business Development') defaultAccess = 0; // Guest / View Only
+
+                    const emailToSave = registerEmail.toLowerCase().trim();
+                    await getDbRef().collection('appUsers').doc(emailToSave).set({
+                        email: emailToSave,
+                        name: registerName,
+                        department: registerDepartment,
+                        permissions: mapAccessLevelToPermissions(defaultAccess),
+                        createdAt: new Date().toISOString()
+                    });
+                    
+                } catch (error) {
+                    console.error("Registration Error:", error);
+                    setLoginError(true);
+                    setDbErrorMessage(error.message);
+                    setIsDataLoading(false);
+                }
+            };
+
             const handleSignOut = async () => {
                 try { await firebase.auth().signOut(); } catch(e) { console.error("Sign out error", e); }
             };
@@ -1063,42 +1115,95 @@
                         <div className="mb-8 w-full max-w-md mx-auto flex justify-center">
                             <img src="./ETMC%20LOGO.jpg" alt="elev8 trading and marketing" className="w-72 sm:w-80 object-contain pointer-events-none" style={{ mixBlendMode: 'screen', filter: 'grayscale(100%) contrast(500%)' }} onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/400x200/ffffff/11243E?text=ETMC+elev8'; }} />
                         </div>
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto p-8">
-                            <div className="text-center mb-8">
-                                <h2 className="text-2xl font-bold text-gray-800">Welcome Back</h2>
-                                <p className="text-gray-500 text-sm mt-1">Please sign in to your dashboard</p>
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto p-8 relative overflow-hidden">
+                            <div className="text-center mb-6">
+                                <h2 className="text-2xl font-bold text-gray-800">{isRegistering ? 'Create Account' : 'Welcome Back'}</h2>
+                                <p className="text-gray-500 text-sm mt-1">{isRegistering ? 'Register for your department dashboard' : 'Please sign in to your dashboard'}</p>
                             </div>
                             
-                            <form className="space-y-6" onSubmit={handleLoginSubmit}>
-                                {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-200">{dbErrorMessage || 'Authentication Failed'}</div>}
-                                
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-gray-700 block">Email Address</label>
-                                    <div className="relative flex items-center">
-                                        <div className="absolute left-3 text-gray-400"><Mail size={18} /></div>
-                                        <input required type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all" placeholder="you@company.com" />
+                            {loginError && <div className="bg-red-50 text-red-600 p-3 mb-4 rounded-lg text-sm text-center font-medium border border-red-200 animate-in fade-in">{dbErrorMessage || 'Authentication Failed'}</div>}
+                            
+                            {!isRegistering ? (
+                                <form className="space-y-5 animate-in fade-in slide-in-from-left-4" onSubmit={handleLoginSubmit}>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700 block">Email Address</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><Mail size={18} /></div>
+                                            <input required type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm" placeholder="you@company.com" />
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-gray-700 block">Password</label>
-                                    <div className="relative flex items-center">
-                                        <div className="absolute left-3 text-gray-400"><Lock size={18} /></div>
-                                        <input required type={showPassword ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all" placeholder="••••••••" />
-                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors">
-                                            {showPassword ? <X size={18} /> : <Eye size={18} />} 
-                                        </button>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700 block">Password</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><Lock size={18} /></div>
+                                            <input required type={showPassword ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm" placeholder="••••••••" />
+                                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors">
+                                                {showPassword ? <X size={18} /> : <Eye size={18} />} 
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <button type="submit" disabled={isDataLoading} className="w-full bg-[#11243E] hover:bg-[#1a355a] text-white font-semibold py-3.5 rounded-lg transition-colors duration-200 shadow-md mt-4 disabled:opacity-50">
-                                    {isDataLoading ? 'Authenticating...' : 'Sign In'}
-                                </button>
-                                
-                                <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-center text-[10px] text-gray-400">
-                                    <Shield size={12} className="mr-1" /> Protected by Firebase Authentication
-                                </div>
-                            </form>
+                                    <button type="submit" disabled={isDataLoading} className="w-full bg-[#11243E] hover:bg-[#1a355a] text-white font-semibold py-3 rounded-lg transition-colors duration-200 shadow-md mt-2 disabled:opacity-50">
+                                        {isDataLoading ? 'Authenticating...' : 'Sign In'}
+                                    </button>
+                                    
+                                    <div className="mt-4 text-center">
+                                        <p className="text-sm text-gray-600">Don't have an account? <button type="button" onClick={() => { setIsRegistering(true); setLoginError(false); }} className="text-indigo-600 font-bold hover:underline">Sign up</button></p>
+                                    </div>
+                                    
+                                    <div className="mt-2 pt-4 border-t border-gray-100 flex items-center justify-center text-[10px] text-gray-400">
+                                        <Shield size={12} className="mr-1" /> Protected by Firebase Authentication
+                                    </div>
+                                </form>
+                            ) : (
+                                <form className="space-y-4 animate-in fade-in slide-in-from-right-4" onSubmit={handleRegisterSubmit}>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 block uppercase tracking-wider">Full Name</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><User size={16} /></div>
+                                            <input required type="text" value={registerName} onChange={e => setRegisterName(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm" placeholder="Juan Dela Cruz" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 block uppercase tracking-wider">Department</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><Building size={16} /></div>
+                                            <select required value={registerDepartment} onChange={e => setRegisterDepartment(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm bg-white cursor-pointer">
+                                                <option value="Purchasing">Purchasing</option>
+                                                <option value="AP">Accounts Payable (AP)</option>
+                                                <option value="Treasury">Treasury</option>
+                                                <option value="Business Development">Business Development</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 block uppercase tracking-wider">Email Address</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><Mail size={16} /></div>
+                                            <input required type="email" value={registerEmail} onChange={e => setRegisterEmail(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm" placeholder="you@company.com" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 block uppercase tracking-wider">Password</label>
+                                        <div className="relative flex items-center">
+                                            <div className="absolute left-3 text-gray-400"><Lock size={16} /></div>
+                                            <input required type="password" value={registerPassword} onChange={e => setRegisterPassword(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#11243E] focus:border-[#11243E] outline-none transition-all text-sm" placeholder="At least 6 characters" minLength={6} />
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" disabled={isDataLoading} className="w-full bg-[#11243E] hover:bg-[#1a355a] text-white font-semibold py-3 rounded-lg transition-colors duration-200 shadow-md mt-2 disabled:opacity-50">
+                                        {isDataLoading ? 'Creating Account...' : 'Register Account'}
+                                    </button>
+
+                                    <div className="mt-4 text-center">
+                                        <p className="text-sm text-gray-600">Already have an account? <button type="button" onClick={() => { setIsRegistering(false); setLoginError(false); }} className="text-indigo-600 font-bold hover:underline">Log in</button></p>
+                                    </div>
+                                </form>
+                            )}
                         </div>
                     </div>
                 );
@@ -1107,13 +1212,10 @@
             const handleTabSwitch = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); };
 
             const renderHeaderBadge = () => {
-                switch(accessLevel) {
-                    case 4: return <span className="text-amber-600 flex items-center bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shrink-0 text-xs"><Landmark size={12} className="mr-1" /> Treasury Access</span>;
-                    case 3: return <span className="text-emerald-600 flex items-center bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0 text-xs"><Check size={12} className="mr-1" /> Super User</span>;
-                    case 2: return <span className="text-indigo-600 flex items-center bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 shrink-0 text-xs"><User size={12} className="mr-1" /> Level 2 Access</span>;
-                    case 1: return <span className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0 text-xs"><User size={12} className="mr-1" /> Level 1 Access</span>;
-                    default: return <span className="text-slate-500 flex items-center bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0 text-xs"><Lock size={12} className="mr-1" /> View Only</span>;
-                }
+                if (userPermissions.systemAdmin) return <span className="text-emerald-600 flex items-center bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0 text-xs"><Check size={12} className="mr-1" /> Super Admin</span>;
+                if (userPermissions.manageTreasury) return <span className="text-amber-600 flex items-center bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shrink-0 text-xs"><Landmark size={12} className="mr-1" /> Treasury</span>;
+                if (userPermissions.managePo || userPermissions.manageApv) return <span className="text-indigo-600 flex items-center bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 shrink-0 text-xs"><User size={12} className="mr-1" /> Core Staff</span>;
+                return <span className="text-slate-500 flex items-center bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0 text-xs"><Lock size={12} className="mr-1" /> View Only</span>;
             };
 
             if (isDataLoading && !dbError) {
@@ -1220,11 +1322,11 @@
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                             </div>
-                            {accessLevel >= 2 && accessLevel !== 4 && (<button onClick={openAddPo} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-indigo-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
+                            {userPermissions.managePo && (<button onClick={openAddPo} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-indigo-700 transition-colors"><Plus size={16} className="mr-1" /> Add PO</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4 w-1/4">PO Details</th><th className="p-4 w-1/3">Vendor & Remarks</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{accessLevel >= 1 && accessLevel !== 4 && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4 w-1/4">PO Details</th><th className="p-4 w-1/3">Vendor & Remarks</th><th className="p-4 text-center">Status</th><th className="p-4 text-right">Amount</th>{(userPermissions.managePo || userPermissions.deleteRecords) && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{tabFilteredPurchases.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : tabFilteredPurchases.map(po => {
                             const linkedApv = apvs.find(a => a.poId === po.id);
                             const expDate = safeParseDate(po.expectedDelivery);
@@ -1287,12 +1389,12 @@
                                         </div>
                                     )}
                                 </td>
-                                {accessLevel >= 1 && accessLevel !== 4 && (
+                                {(userPermissions.managePo || userPermissions.deleteRecords) && (
                                     <td className="p-4 text-center space-x-2 whitespace-nowrap pt-5">
-                                        <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>
-                                        {accessLevel >= 2 && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">{isServiceOrRental ? 'Complete' : 'Receive'}</button>}
+                                        {userPermissions.managePo && <button onClick={() => openEditPo(po)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit PO"><Edit3 size={16} /></button>}
+                                        {userPermissions.managePo && !po.receivedDate && <button onClick={() => openReceiveModal(po)} className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded font-bold transition-colors">{isServiceOrRental ? 'Complete' : 'Receive'}</button>}
                                         
-                                        {accessLevel === 3 && <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>}
+                                        {userPermissions.deleteRecords && <button onClick={() => handleDeletePo(po.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete PO"><Trash2 size={16}/></button>}
                                     </td>
                                 )}
                             </tr>
@@ -1315,11 +1417,11 @@
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                             </div>
-                            {accessLevel >= 2 && accessLevel !== 4 && (<button onClick={openAddApv} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-indigo-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
+                            {userPermissions.manageApv && (<button onClick={openAddApv} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center w-full sm:w-auto justify-center whitespace-nowrap hover:bg-indigo-700 transition-colors"><Plus size={16} className="mr-1" /> Add APV</button>)}
                         </div>
                     </div>
                     <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & Details</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{(accessLevel === 2 || accessLevel === 3) && <th className="p-4 text-center">Action</th>}</tr></thead>
+                        <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV #</th><th className="p-4">Vendor & Details</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Aging</th>{(userPermissions.manageApv || userPermissions.deleteRecords) && <th className="p-4 text-center">Action</th>}</tr></thead>
                         <tbody className="divide-y divide-gray-100">{tabFilteredApvs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-gray-400 italic">No records found.</td></tr> : tabFilteredApvs.map(apv => {
                             const aging = getAgingCategory(apv.dueDate, apv.status);
                             const needsCheck = apv.status === 'Unpaid' && !apv.checkNumber;
@@ -1350,11 +1452,11 @@
                                     </td>
                                     <td className="p-4 text-right font-bold">{formatCurrency(apv.amount)}</td>
                                     <td className="p-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getAgingColor(aging)}`}>{aging}</span></td>
-                                    {(accessLevel === 2 || accessLevel === 3) && (
+                                    {(userPermissions.manageApv || userPermissions.deleteRecords) && (
                                         <td className="p-4 text-center space-x-2 whitespace-nowrap">
-                                            <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>
+                                            {userPermissions.manageApv && <button onClick={() => openEditApv(apv)} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit APV"><Edit3 size={16} /></button>}
                                             
-                                            {accessLevel === 3 && <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>}
+                                            {userPermissions.deleteRecords && <button onClick={() => handleDeleteApv(apv.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete APV"><Trash2 size={16}/></button>}
                                         </td>
                                     )}
                                 </tr>
@@ -1409,11 +1511,9 @@
                                     <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
                                 </div>
                                 
-                                {(accessLevel === 1 || accessLevel === 3 || accessLevel === 4) && (
+                                {userPermissions.manageTreasury && (
                                     <div className="flex space-x-2 w-full sm:w-auto">
-                                        {(accessLevel === 3 || accessLevel === 4) && (
-                                            <button onClick={() => openFundModal()} className="flex-1 sm:flex-none justify-center bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center"><Landmark size={14} className="mr-1"/> For Funding</button>
-                                        )}
+                                        <button onClick={() => openFundModal()} className="flex-1 sm:flex-none justify-center bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center"><Landmark size={14} className="mr-1"/> For Funding</button>
                                         <button onClick={() => openCheckModal()} className="flex-1 sm:flex-none justify-center bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors flex items-center"><FileSignature size={14} className="mr-1"/> Create Check</button>
                                     </div>
                                 )}
@@ -1439,7 +1539,7 @@
                         </div>
 
                         <div className="overflow-x-auto"><table className="w-full text-left text-xs md:text-sm">
-                            <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV Ref</th><th className="p-4">Vendor</th><th className="p-4 text-right">Amount</th><th className="p-4">Check Details</th><th className="p-4 text-center">Status</th>{(accessLevel === 1 || accessLevel === 3 || accessLevel === 4) && <th className="p-4 text-center">Action</th>}</tr></thead>
+                            <thead><tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase"><th className="p-4">APV Ref</th><th className="p-4">Vendor</th><th className="p-4 text-right">Amount</th><th className="p-4">Check Details</th><th className="p-4 text-center">Status</th>{userPermissions.manageTreasury && <th className="p-4 text-center">Action</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-100">{sortedTreasury.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-400 italic">No records match your search.</td></tr> : sortedTreasury.map(apv => {
                                 const isCollected = apv.status === 'Paid';
                                 return (
@@ -1463,13 +1563,11 @@
                                                 {apv.checkStatus === 'Prepared' ? 'Check Created' : (apv.checkStatus || 'Pending Check')}
                                             </span>
                                         </td>
-                                        {(accessLevel === 1 || accessLevel === 3 || accessLevel === 4) && (
+                                        {userPermissions.manageTreasury && (
                                             <td className="p-4 text-center whitespace-nowrap space-x-2">
-                                                {(accessLevel === 3 || accessLevel === 4) && (
-                                                    <button onClick={() => apv.funded ? handleUnfund(apv) : openFundModal(apv)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${apv.funded ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`} title={apv.funded ? "Remove Funding" : "For Funding"}>
-                                                        <Landmark size={12} className="inline mr-1" /> {apv.funded ? 'Funded' : 'For Funding'}
-                                                    </button>
-                                                )}
+                                                <button onClick={() => apv.funded ? handleUnfund(apv) : openFundModal(apv)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${apv.funded ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`} title={apv.funded ? "Remove Funding" : "For Funding"}>
+                                                    <Landmark size={12} className="inline mr-1" /> {apv.funded ? 'Funded' : 'For Funding'}
+                                                </button>
                                                 <button onClick={() => openCheckModal(apv)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors">
                                                     <FileSignature size={12} className="inline mr-1" /> Check
                                                 </button>
@@ -1578,7 +1676,7 @@
                                                     <th className="p-4 font-semibold">Collection Info</th>
                                                     <th className="p-4 font-semibold text-right">Amount</th>
                                                     <th className="p-4 font-semibold text-center">Status</th>
-                                                    {accessLevel === 3 && <th className="p-4 font-semibold text-center">Action</th>}
+                                                    {userPermissions.manageTreasury && <th className="p-4 font-semibold text-center">Action</th>}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50 bg-white">
@@ -1611,7 +1709,7 @@
                                                                 {apv.status === 'Paid' ? 'Paid' : 'Funded'}
                                                             </span>
                                                         </td>
-                                                        {accessLevel === 3 && (
+                                                        {userPermissions.manageTreasury && (
                                                             <td className="p-4 text-center">
                                                                 <button onClick={() => confirmResetFunding(apv)} className="text-gray-400 hover:text-red-500 transition-colors" title="Delete Check Details & Funding">
                                                                     <Trash2 size={16} />
@@ -1634,14 +1732,14 @@
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
                         <h3 className="text-base md:text-lg font-semibold text-gray-900">User Access Control</h3>
-                        <button onClick={() => setIsUserModalOpen(true)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center hover:bg-indigo-700 transition-colors">
+                        <button onClick={() => { setNewUserAccount({ email: '', permissions: mapAccessLevelToPermissions(1) }); setIsUserModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center hover:bg-indigo-700 transition-colors">
                             <Plus size={16} className="mr-1" /> Add / Edit User Access
                         </button>
                     </div>
                     <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-start text-xs text-indigo-800">
                         <Shield size={20} className="mr-3 shrink-0 mt-0.5 text-indigo-600" />
                         <div>
-                            <strong>Secure Firebase Auth is Active:</strong> Users and their passwords must be created in the <strong>Firebase Console &gt; Authentication</strong> dashboard first. Use this screen to assign specific access levels to those authenticated emails.
+                            <strong>Secure Firebase Auth is Active:</strong> Users and their passwords must be created in the <strong>Firebase Console &gt; Authentication</strong> dashboard first. Use this screen to assign specific granular access permissions to those authenticated emails.
                         </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -1649,26 +1747,38 @@
                             <thead>
                                 <tr className="bg-white border-b border-gray-200 text-gray-500 font-semibold uppercase">
                                     <th className="p-4">Email Address</th>
-                                    <th className="p-4">Access Level</th>
+                                    <th className="p-4">Active Permissions</th>
                                     <th className="p-4 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {appUsers.length === 0 ? (
                                     <tr><td colSpan="3" className="p-8 text-center text-gray-400 italic">No custom access levels assigned yet.</td></tr>
-                                ) : appUsers.map(u => (
+                                ) : appUsers.map(u => {
+                                    const activePerms = Object.entries(u.permissions || {}).filter(([k, v]) => v).map(([k]) => k);
+                                    
+                                    return (
                                     <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="p-4 font-bold text-gray-900">{u.email}</td>
                                         <td className="p-4">
-                                            <span className="px-2 py-1 rounded-full text-[10px] font-bold border bg-gray-50 text-gray-600 border-gray-200 uppercase">
-                                                {u.accessLevel === 3 ? 'Admin (Full)' : u.accessLevel === 4 ? 'Treasury' : u.accessLevel === 2 ? 'Level 2' : u.accessLevel === 1 ? 'Level 1' : 'View Only'}
-                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {activePerms.length === 0 ? (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-gray-50 text-gray-500 border-gray-200 uppercase">View Only</span>
+                                                ) : (
+                                                    activePerms.map(perm => (
+                                                        <span key={perm} className="px-2 py-0.5 rounded text-[10px] font-bold border bg-indigo-50 text-indigo-600 border-indigo-200 uppercase tracking-tighter">
+                                                            {perm.replace('manage', '').replace('Data', '').replace('Records', '')}
+                                                        </span>
+                                                    ))
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className="p-4 text-center">
+                                        <td className="p-4 text-center space-x-2">
+                                            <button onClick={() => { setNewUserAccount({ email: u.email, permissions: u.permissions || mapAccessLevelToPermissions(0) }); setIsUserModalOpen(true); }} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Edit Permissions"><Edit3 size={16} /></button>
                                             <button onClick={() => handleDeleteUser(u.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Revoke Specific Access"><Trash2 size={16} /></button>
                                         </td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                         </table>
                     </div>
@@ -1763,19 +1873,19 @@
                             <button onClick={() => handleTabSwitch('funding')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'funding' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><CalendarDays className="mr-3" size={20} /> Cash Position Report</button>
                             <button onClick={() => handleTabSwitch('aging')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'aging' ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}><Clock className="mr-3" size={20} /> Aging Report</button>
                             
-                            {accessLevel === 3 && (
+                            {(userPermissions.manageUsers || userPermissions.systemAdmin) && (
                                 <div className="pt-4 mt-4 border-t border-white/10 space-y-2">
-                                    <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-white/10'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>
-                                    <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-white/10'}`}><History className="mr-3" size={20} /> System Logs</button>
+                                    {userPermissions.manageUsers && <button onClick={() => handleTabSwitch('users')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'users' ? 'bg-emerald-600 text-white' : 'hover:bg-white/10'}`}><UsersIcon className="mr-3" size={20} /> User Management</button>}
+                                    {userPermissions.systemAdmin && <button onClick={() => handleTabSwitch('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg ${activeTab === 'logs' ? 'bg-purple-600 text-white' : 'hover:bg-white/10'}`}><History className="mr-3" size={20} /> System Logs</button>}
                                 </div>
                             )}
                         </nav>
                         <div className="p-6 bg-black/20 mt-auto shrink-0">
-                            {accessLevel >= 1 && (
+                            {userPermissions.exportData && (
                                 <button onClick={handleExportCompleteReport} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded-lg text-sm transition-colors"><Download size={16} className="mr-2" /> Export Report (CSV)</button>
                             )}
 
-                            {accessLevel === 3 && (
+                            {userPermissions.systemAdmin && (
                                 <>
                                     <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 rounded-lg text-sm transition-colors"><Upload size={16} className="mr-2" /> Import Data (CSV)</button>
                                     <button onClick={() => setIsClearModalOpen(true)} className="w-full flex items-center justify-center px-4 py-2 mb-2 bg-white/5 hover:bg-red-500/30 hover:text-red-300 text-slate-300 rounded-lg text-sm transition-colors"><Trash2 size={16} className="mr-2" /> Clear All Data</button>
@@ -1829,8 +1939,8 @@
                             {activeTab === 'treasury' && renderTreasury()}
                             {activeTab === 'funding' && renderFundingReport()}
                             {activeTab === 'aging' && renderAgingReport()}
-                            {activeTab === 'users' && accessLevel === 3 && renderUserManagement()}
-                            {activeTab === 'logs' && accessLevel === 3 && renderLogs()}
+                            {activeTab === 'users' && userPermissions.manageUsers && renderUserManagement()}
+                            {activeTab === 'logs' && userPermissions.systemAdmin && renderLogs()}
                         </div>
                     </main>
 
@@ -1866,19 +1976,61 @@
                                         <label className="block text-xs font-medium text-gray-700 mb-1">Email Address (Registered in Firebase)</label>
                                         <input required type="email" value={newUserAccount.email} onChange={e => setNewUserAccount({...newUserAccount, email: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="user@company.com" />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Access Level Privilege</label>
-                                        <select required value={newUserAccount.accessLevel} onChange={e => setNewUserAccount({...newUserAccount, accessLevel: Number(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                                            <option value={3}>Admin (Full Access & User Control)</option>
-                                            <option value={4}>Treasury (Treasury & Funding Only)</option>
-                                            <option value={2}>Level 2 (Edit PO/APV Records)</option>
-                                            <option value={1}>Level 1 (Check Details & Limited Edits)</option>
-                                            <option value={0}>Guest (View Only)</option>
-                                        </select>
+                                    <div className="space-y-3 pt-2">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide border-b pb-1">Access Level Selection</label>
+                                        
+                                        {(() => {
+                                            const isViewOnly = !Object.values(newUserAccount.permissions || {}).some(v => v);
+                                            return (
+                                                <React.Fragment>
+                                                    <div className={`flex items-start p-2.5 rounded border mb-2 cursor-pointer transition-colors ${isViewOnly ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`} onClick={() => setNewUserAccount({...newUserAccount, permissions: { managePo: false, manageApv: false, manageTreasury: false, deleteRecords: false, manageUsers: false, systemAdmin: false, exportData: false }})}>
+                                                        <div className="flex items-center h-5">
+                                                            <input id="role-viewOnly" type="radio" checked={isViewOnly} onChange={() => {}} className="w-4 h-4 text-indigo-600 bg-white border-gray-300 focus:ring-indigo-500 cursor-pointer" />
+                                                        </div>
+                                                        <div className="ml-2 text-sm">
+                                                            <label htmlFor="role-viewOnly" className="font-bold text-slate-800 cursor-pointer">View Only</label>
+                                                            <p className="text-[10px] text-slate-500 mt-0.5">Read-only access. Cannot create, edit, or delete any records.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`flex items-start p-2.5 rounded border mb-3 transition-colors ${!isViewOnly ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                                                        <div className="flex items-center h-5 mt-1 cursor-pointer" onClick={() => { if(isViewOnly) setNewUserAccount({...newUserAccount, permissions: { managePo: true, manageApv: false, manageTreasury: false, deleteRecords: false, manageUsers: false, systemAdmin: false, exportData: false }}) }}>
+                                                            <input id="role-custom" type="radio" checked={!isViewOnly} onChange={() => {}} className="w-4 h-4 text-indigo-600 bg-white border-gray-300 focus:ring-indigo-500 cursor-pointer" />
+                                                        </div>
+                                                        <div className="ml-2 text-sm w-full">
+                                                            <label htmlFor="role-custom" className="font-bold text-slate-800 cursor-pointer block" onClick={() => { if(isViewOnly) setNewUserAccount({...newUserAccount, permissions: { managePo: true, manageApv: false, manageTreasury: false, deleteRecords: false, manageUsers: false, systemAdmin: false, exportData: false }}) }}>Custom Access</label>
+                                                            <p className="text-[10px] text-slate-500 mt-0.5 mb-3 cursor-pointer" onClick={() => { if(isViewOnly) setNewUserAccount({...newUserAccount, permissions: { managePo: true, manageApv: false, manageTreasury: false, deleteRecords: false, manageUsers: false, systemAdmin: false, exportData: false }}) }}>Select specific permissions for this user.</p>
+                                                            
+                                                            <div className={`space-y-2 pt-3 border-t border-indigo-100 transition-opacity duration-200 ${isViewOnly ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
+                                                                {[
+                                                                    { key: 'managePo', label: 'Manage Purchase Orders', desc: 'Create, Edit, Receive POs' },
+                                                                    { key: 'manageApv', label: 'Manage APV Records', desc: 'Create, Edit APVs' },
+                                                                    { key: 'manageTreasury', label: 'Treasury Operations', desc: 'Fund APVs, Create Checks' },
+                                                                    { key: 'deleteRecords', label: 'Delete Records', desc: 'Permanently delete POs & APVs' },
+                                                                    { key: 'manageUsers', label: 'User Management', desc: 'Add/Edit user access controls' },
+                                                                    { key: 'systemAdmin', label: 'System Administrator', desc: 'Import CSV, Clear Data, View Logs' },
+                                                                    { key: 'exportData', label: 'Export Data', desc: 'Download CSV reports' }
+                                                                ].map(item => (
+                                                                    <div key={item.key} className="flex items-start">
+                                                                        <div className="flex items-center h-5">
+                                                                            <input id={`perm-${item.key}`} type="checkbox" checked={newUserAccount.permissions[item.key] || false} onChange={e => setNewUserAccount({...newUserAccount, permissions: {...newUserAccount.permissions, [item.key]: e.target.checked}})} className="w-4 h-4 text-indigo-600 bg-white border-gray-300 rounded focus:ring-indigo-500 cursor-pointer" />
+                                                                        </div>
+                                                                        <div className="ml-2 text-sm">
+                                                                            <label htmlFor={`perm-${item.key}`} className="font-medium text-gray-700 cursor-pointer">{item.label}</label>
+                                                                            <p className="text-[10px] text-gray-500">{item.desc}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </React.Fragment>
+                                            );
+                                        })()}
                                     </div>
-                                    <div className="pt-2 flex justify-end space-x-3">
+                                    <div className="pt-4 flex justify-end space-x-3 border-t">
                                         <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Access Level</button>
+                                        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Access</button>
                                     </div>
                                 </form>
                             </div>
@@ -1998,6 +2150,7 @@
 
                     <datalist id="unpaid-apvs">{apvs.filter(a => a.status === 'Unpaid').map(a => <option key={a.id} value={a.id} />)}</datalist>
 
+                    {}
                     {isApvModalOpen && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 flex flex-col">
@@ -2032,45 +2185,44 @@
                                 <form onSubmit={handleAddPo} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Number</label><input required readOnly={!!editingPoId} value={newPo.id} onChange={e => setNewPo({...newPo, id: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${editingPoId ? 'bg-gray-100 border-gray-200 cursor-not-allowed' : 'border-gray-200'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required disabled={accessLevel === 1} value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Vendor</label><input required value={newPo.vendor} onChange={e => setNewPo({...newPo, vendor: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PR Received Date</label><input required disabled={accessLevel === 1} type="date" value={newPo.prReceivedDate} onChange={e => setNewPo({...newPo, prReceivedDate: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Issue Date</label><input required disabled={accessLevel === 1} type="date" value={newPo.date} onChange={e => setNewPo({...newPo, date: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-500' : 'border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PR Received Date</label><input required type="date" value={newPo.prReceivedDate} onChange={e => setNewPo({...newPo, prReceivedDate: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PO Issue Date</label><input required type="date" value={newPo.date} onChange={e => setNewPo({...newPo, date: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">{newPo.category === 'Site Rental' || newPo.category === 'Services' ? 'Target Completion' : 'Expected Delivery'}</label><input required type="date" value={newPo.expectedDelivery} onChange={e => setNewPo({...newPo, expectedDelivery: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-gray-500">{newPo.category === 'Site Rental' || newPo.category === 'Services' ? 'Completion Date' : 'Actual Received Date'} <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><input type="date" value={newPo.receivedDate || ''} onChange={e => setNewPo({...newPo, receivedDate: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" /></div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-3">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Gross Amt (₱)</label><input required disabled={accessLevel === 1} type="number" step="0.01" value={newPo.grossAmount} onChange={e => { const gross = e.target.value; const discount = newPo.discountAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount)).toString(); setNewPo({...newPo, grossAmount: gross, amount: net}); }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-indigo-500'}`} /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-emerald-600">Discount (₱)</label><input disabled={accessLevel === 1} type="number" step="0.01" value={newPo.discountAmount} onChange={e => { const discount = e.target.value; const gross = newPo.grossAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount || 0)).toString(); setNewPo({...newPo, discountAmount: discount, amount: net}); }} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100 border-gray-200' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'}`} /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Gross Amt (₱)</label><input required type="number" step="0.01" value={newPo.grossAmount} onChange={e => { const gross = e.target.value; const discount = newPo.discountAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount)).toString(); setNewPo({...newPo, grossAmount: gross, amount: net}); }} className="w-full px-2.5 py-2 border rounded-lg text-sm border-gray-200 focus:ring-2 focus:ring-indigo-500" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-emerald-600">Discount (₱)</label><input type="number" step="0.01" value={newPo.discountAmount} onChange={e => { const discount = e.target.value; const gross = newPo.grossAmount || 0; const net = Math.max(0, parseFloat(gross || 0) - parseFloat(discount || 0)).toString(); setNewPo({...newPo, discountAmount: discount, amount: net}); }} className="w-full px-2.5 py-2 border rounded-lg text-sm border-gray-200 focus:ring-2 focus:ring-emerald-500" /></div>
                                         <div><label className="text-[10px] uppercase font-bold text-indigo-600">Net Amount (₱)</label><input disabled type="number" value={newPo.amount} className="w-full px-2.5 py-2 border rounded-lg text-sm bg-indigo-50 text-indigo-800 font-bold border-indigo-200 cursor-not-allowed" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select disabled={accessLevel === 1} value={newPo.category || 'Freshman'} onChange={e => setNewPo({...newPo, category: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select disabled={accessLevel === 1} value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className={`w-full px-2.5 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : ''}`}><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Category</label><select value={newPo.category || 'Freshman'} onChange={e => setNewPo({...newPo, category: e.target.value})} className="w-full px-2.5 py-2 border rounded-lg text-sm"><option value="Freshman">Freshman</option><option value="Trading">Trading</option></select></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Payment Terms</label><select value={newPo.paymentTerms || 'Terms'} onChange={e => setNewPo({...newPo, paymentTerms: e.target.value})} className="w-full px-2.5 py-2 border rounded-lg text-sm"><option value="Terms">Std Terms</option><option value="COD">COD</option></select></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PR Requestor</label><input required disabled={accessLevel === 1} type="text" value={newPo.prRequestor || ''} onChange={e => setNewPo({...newPo, prRequestor: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-indigo-500'}`} placeholder="e.g., Juan Santos" /></div>
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Purchasing Processor</label><input required disabled={accessLevel === 1} type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-indigo-500'}`} placeholder="e.g., Alex Reyes" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">PR Requestor</label><input required type="text" value={newPo.prRequestor || ''} onChange={e => setNewPo({...newPo, prRequestor: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" placeholder="e.g., Juan Santos" /></div>
+                                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Purchasing Processor</label><input required type="text" value={newPo.processorName || ''} onChange={e => setNewPo({...newPo, processorName: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" placeholder="e.g., Alex Reyes" /></div>
                                     </div>
-                                    <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required disabled={accessLevel === 1} type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm ${accessLevel === 1 ? 'bg-gray-100' : 'focus:ring-2 focus:ring-indigo-500'}`} placeholder="Brief description of items" /></div>
+                                    <div><label className="text-[10px] uppercase font-bold text-gray-500">Description</label><input required type="text" value={newPo.description || ''} onChange={e => setNewPo({...newPo, description: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Brief description of items" /></div>
                                     <div><label className="text-[10px] uppercase font-bold text-gray-500">Remarks / Delivery Notes <span className="text-gray-400 font-normal lowercase">(Optional)</span></label><textarea value={newPo.remarks || ''} onChange={e => setNewPo({...newPo, remarks: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" rows="2" placeholder="Any concerns regarding delivery, quality, or vendor..."></textarea></div>
                                     
                                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                                         <label className="text-[10px] uppercase font-bold text-slate-700 block mb-2 flex items-center"><Paperclip size={12} className="mr-1"/> Attach PR/PO Document <span className="text-slate-400 font-normal lowercase ml-1">(JPEG/PNG only)</span></label>
-                                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                                            <input disabled={accessLevel === 1} type="file" accept="image/jpeg, image/png, image/jpg" onChange={handleFileUpload} className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 disabled:opacity-50 w-full" />
+                                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                                            <input type="file" accept="image/jpeg, image/png" onChange={handleFileUpload} className="text-xs text-slate-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
                                             {newPo.attachmentData && (
-                                                <div className="shrink-0 flex items-center bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-emerald-200">
-                                                    <ImageIcon size={12} className="mr-1" /> Image Attached
-                                                    <button type="button" onClick={() => setNewPo({...newPo, attachmentData: ''})} className="ml-2 text-emerald-900 hover:text-red-600 bg-emerald-100/50 p-0.5 rounded-full" title="Remove Attachment"><X size={12} /></button>
+                                                <div className="relative shrink-0 mt-2 sm:mt-0">
+                                                    <img src={newPo.attachmentData} alt="Preview" className="h-10 w-10 object-cover rounded border border-slate-200 shadow-sm" />
+                                                    <button type="button" onClick={() => setNewPo({...newPo, attachmentData: ''})} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full shadow-sm hover:bg-red-600"><X size={12}/></button>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-
                                     <div className="flex gap-2 pt-4"><button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</button><button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Save PO</button></div>
                                 </form>
                             </div>
@@ -2078,53 +2230,48 @@
                     )}
 
                     {isReceiveModalOpen && selectedPo && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                    <h3 className="font-semibold text-gray-900 text-sm md:text-base">
-                                        {selectedPo.category === 'Site Rental' || selectedPo.category === 'Services' ? 'Mark as Completed' : 'Mark PO as Received'}
-                                    </h3>
-                                    <button onClick={() => setIsReceiveModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-                                </div>
-                                <form onSubmit={handleReceivePo} className="p-4 md:p-6 space-y-4">
-                                    <div className="text-sm text-gray-600 mb-4">
-                                        {selectedPo.category === 'Site Rental' || selectedPo.category === 'Services' 
-                                            ? <>Confirming completion for <strong>{selectedPo.id}</strong> from {selectedPo.vendor}.</> 
-                                            : <>Confirming receipt for <strong>{selectedPo.id}</strong> from {selectedPo.vendor}.</>}
-                                    </div>
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+                                <h3 className="font-bold text-lg mb-4 flex items-center"><CheckCircle className="mr-2 text-emerald-600" /> Receive PO: {selectedPo.id}</h3>
+                                <form onSubmit={handleReceivePo} className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            {selectedPo.category === 'Site Rental' || selectedPo.category === 'Services' ? 'Date Completed' : 'Date Received'}
-                                        </label>
-                                        <input required type="date" value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className="w-full px-3 py-2.5 md:py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Actual Received Date</label>
+                                        <input required type="date" value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg mt-1 focus:ring-2 focus:ring-emerald-500 outline-none" />
                                     </div>
-                                    <div className="pt-2 md:pt-4 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button type="button" onClick={() => setIsReceiveModalOpen(false)} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button><button type="submit" className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Confirm</button></div>
+                                    <div className="flex gap-2 pt-2">
+                                        <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition-colors">Confirm</button>
+                                    </div>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {viewingImage && (
-                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingImage(null)}>
-                            <div className="relative max-w-5xl w-full flex flex-col items-center justify-center h-full" onClick={e => e.stopPropagation()}>
-                                <div className="absolute top-4 right-4 flex space-x-2">
-                                    <a href={viewingImage} download={`PO_Attachment_${TODAY.getTime()}.jpg`} className="bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-colors" title="Download Image"><Download size={24} /></a>
-                                    <button onClick={() => setViewingImage(null)} className="bg-white/20 hover:bg-red-500/80 text-white p-2 rounded-full transition-colors" title="Close"><X size={24} /></button>
-                                </div>
-                                <img src={viewingImage} alt="PO Attachment" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
-                            </div>
-                        </div>
-                    )}
-                    
                     {isClearModalOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border-t-4 border-red-500">
-                                <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-100 flex justify-between items-center bg-red-50"><h3 className="font-semibold text-red-800 flex items-center text-sm md:text-base"><AlertTriangle size={18} className="mr-2" /> Warning</h3><button onClick={() => setIsClearModalOpen(false)} className="text-red-400 hover:text-red-600"><X size={20} /></button></div>
-                                <div className="p-4 md:p-6 space-y-4 text-center"><p className="text-sm md:text-base text-gray-700">Are you sure you want to permanently delete all Purchase Orders and APV records?</p><p className="text-xs md:text-sm text-gray-500">This action cannot be undone.</p></div>
-                                <div className="px-4 md:px-6 py-3 md:py-4 bg-gray-50 flex flex-col-reverse xs:flex-row justify-end xs:space-x-3"><button onClick={() => setIsClearModalOpen(false)} disabled={isClearing} className="w-full xs:w-auto px-4 py-2.5 md:py-2 mt-2 xs:mt-0 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button><button onClick={handleClearAllData} disabled={isClearing} className="w-full xs:w-auto px-4 py-2.5 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50">{isClearing ? <Loader2 size={16} className="animate-spin mr-2" /> : <Trash2 size={16} className="mr-2" />}{isClearing ? 'Deleting...' : 'Delete Data'}</button></div>
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border-t-4 border-red-500">
+                                <h3 className="font-bold text-lg mb-2 text-red-700 flex items-center"><AlertTriangle className="mr-2" /> Clear All Data</h3>
+                                <p className="text-sm text-gray-600 mb-4">Are you absolutely sure you want to wipe all Purchase Orders and APVs? This action is irreversible.</p>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setIsClearModalOpen(false)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold">Cancel</button>
+                                    <button type="button" onClick={handleClearAllData} disabled={isClearing} className="flex-1 py-2 bg-red-600 hover:bg-red-700 transition-colors text-white rounded-lg font-bold disabled:opacity-50 flex items-center justify-center">
+                                        {isClearing ? <Loader2 className="animate-spin mr-2" size={16}/> : <Trash2 className="mr-2" size={16}/>}
+                                        {isClearing ? 'Clearing...' : 'Wipe Data'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
+
+                    {viewingImage && (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingImage(null)}>
+                            <div className="relative max-w-4xl w-full flex flex-col items-center">
+                                <button onClick={() => setViewingImage(null)} className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"><X size={32} /></button>
+                                <img src={viewingImage} alt="Attachment" className="max-h-[85vh] object-contain rounded-lg shadow-2xl bg-white" onClick={e => e.stopPropagation()} />
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             );
         }
